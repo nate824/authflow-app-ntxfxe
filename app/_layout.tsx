@@ -2,7 +2,7 @@
 import "react-native-reanimated";
 import React, { useEffect } from "react";
 import { useFonts } from "expo-font";
-import { Stack } from "expo-router";
+import { Stack, useRouter, useSegments } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { SystemBars } from "react-native-edge-to-edge";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
@@ -15,6 +15,7 @@ import {
   ThemeProvider,
 } from "@react-navigation/native";
 import { StatusBar } from "expo-status-bar";
+import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 
 // Prevent the splash screen from auto-hiding before asset loading is complete.
 SplashScreen.preventAutoHideAsync();
@@ -22,6 +23,61 @@ SplashScreen.preventAutoHideAsync();
 export const unstable_settings = {
   initialRouteName: "(tabs)",
 };
+
+function RootLayoutNav() {
+  const { session, loading } = useAuth();
+  const segments = useSegments();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (loading) return;
+
+    const inAuthGroup = segments[0] === '(auth)';
+
+    console.log('Navigation check - Session:', !!session, 'In auth group:', inAuthGroup, 'Segments:', segments);
+
+    if (!session && !inAuthGroup) {
+      // Redirect to login if not authenticated
+      console.log('Redirecting to login...');
+      router.replace('/(auth)/login');
+    } else if (session && inAuthGroup) {
+      // Redirect to home if authenticated
+      console.log('Redirecting to home...');
+      router.replace('/(tabs)');
+    }
+  }, [session, segments, loading]);
+
+  return (
+    <Stack>
+      <Stack.Screen name="(auth)" options={{ headerShown: false }} />
+      <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+      <Stack.Screen
+        name="modal"
+        options={{
+          presentation: "modal",
+          title: "Standard Modal",
+        }}
+      />
+      <Stack.Screen
+        name="formsheet"
+        options={{
+          presentation: "formSheet",
+          title: "Form Sheet Modal",
+          sheetGrabberVisible: true,
+          sheetAllowedDetents: [0.5, 0.8, 1.0],
+          sheetCornerRadius: 20,
+        }}
+      />
+      <Stack.Screen
+        name="transparent-modal"
+        options={{
+          presentation: "transparentModal",
+          headerShown: false,
+        }}
+      />
+    </Stack>
+  );
+}
 
 export default function RootLayout() {
   const colorScheme = useColorScheme();
@@ -83,36 +139,12 @@ export default function RootLayout() {
       <ThemeProvider
         value={colorScheme === "dark" ? CustomDarkTheme : CustomDefaultTheme}
       >
-        <GestureHandlerRootView>
-          <Stack>
-            <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-            <Stack.Screen
-              name="modal"
-              options={{
-                presentation: "modal",
-                title: "Standard Modal",
-              }}
-            />
-            <Stack.Screen
-              name="formsheet"
-              options={{
-                presentation: "formSheet",
-                title: "Form Sheet Modal",
-                sheetGrabberVisible: true,
-                sheetAllowedDetents: [0.5, 0.8, 1.0],
-                sheetCornerRadius: 20,
-              }}
-            />
-            <Stack.Screen
-              name="transparent-modal"
-              options={{
-                presentation: "transparentModal",
-                headerShown: false,
-              }}
-            />
-          </Stack>
-          <SystemBars style={"auto"} />
-        </GestureHandlerRootView>
+        <AuthProvider>
+          <GestureHandlerRootView>
+            <RootLayoutNav />
+            <SystemBars style={"auto"} />
+          </GestureHandlerRootView>
+        </AuthProvider>
       </ThemeProvider>
     </>
   );
