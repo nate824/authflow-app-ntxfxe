@@ -56,14 +56,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return { error, data: null };
       }
 
-      // Create user profile
+      // Create user profile with is_admin defaulting to false
       if (data.user) {
         const { error: profileError } = await supabase
           .from('user_profiles')
           .insert({
             user_id: data.user.id,
             display_name: email.split('@')[0],
-            role: 'user'
+            role: 'user',
+            is_admin: false
           });
 
         if (profileError) {

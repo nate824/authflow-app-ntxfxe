@@ -11,6 +11,7 @@ interface UserProfile {
   display_name: string | null;
   avatar_url: string | null;
   role: string | null;
+  is_admin: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -64,6 +65,18 @@ export default function HomeScreen() {
           <ActivityIndicator size="small" color={theme.colors.primary} style={styles.loader} />
         ) : (
           <View style={styles.infoContainer}>
+            {/* User Type Badge */}
+            {profile && (
+              <View style={[
+                styles.badge,
+                { backgroundColor: profile.is_admin ? '#10b981' : '#3b82f6' }
+              ]}>
+                <Text style={styles.badgeText}>
+                  {profile.is_admin ? '👑 Admin User' : '👤 Basic User'}
+                </Text>
+              </View>
+            )}
+
             <Text style={[styles.infoLabel, { color: theme.colors.text, opacity: 0.6 }]}>
               Email:
             </Text>
@@ -85,6 +98,13 @@ export default function HomeScreen() {
                 </Text>
                 <Text style={[styles.infoValue, { color: theme.colors.text }]}>
                   {profile.role || 'user'}
+                </Text>
+
+                <Text style={[styles.infoLabel, { color: theme.colors.text, opacity: 0.6 }]}>
+                  Account Type:
+                </Text>
+                <Text style={[styles.infoValue, { color: theme.colors.text }]}>
+                  {profile.is_admin ? 'Administrator' : 'Basic User'}
                 </Text>
               </>
             )}
@@ -126,6 +146,18 @@ const styles = StyleSheet.create({
   },
   loader: {
     marginVertical: 20,
+  },
+  badge: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    marginBottom: 20,
+    alignSelf: 'center',
+  },
+  badgeText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '700',
   },
   infoContainer: {
     width: '100%',
