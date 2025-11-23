@@ -1,3 +1,4 @@
+
 import React from 'react';
 import {
   View,
@@ -35,18 +36,26 @@ interface FloatingTabBarProps {
   containerWidth?: number;
   borderRadius?: number;
   bottomMargin?: number;
+  overwrittenProps?: Record<string, any>;
+  __trace?: string[];
 }
 
 export default function FloatingTabBar({
   tabs,
   containerWidth = screenWidth / 2.5,
   borderRadius = 35,
-  bottomMargin
+  bottomMargin,
+  overwrittenProps = {},
+  __trace = []
 }: FloatingTabBarProps) {
   const router = useRouter();
   const pathname = usePathname();
   const theme = useTheme();
   const animatedValue = useSharedValue(0);
+
+  // Handle editor props
+  const id = __trace.join("");
+  const attributes = overwrittenProps[id] ?? {};
 
   // Improved active tab detection with better path matching
   const activeTabIndex = React.useMemo(() => {
