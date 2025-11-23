@@ -1,75 +1,142 @@
-import React from "react";
-import { View, Text, StyleSheet, ScrollView } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
-import { IconSymbol } from "@/components/IconSymbol";
-import { GlassView } from "expo-glass-effect";
-import { useTheme } from "@react-navigation/native";
+
+import React from 'react';
+import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Alert } from 'react-native';
+import { router } from 'expo-router';
+import { useAuth } from '@/contexts/AuthContext';
+import { colors, commonStyles, buttonStyles } from '@/styles/commonStyles';
 
 export default function ProfileScreen() {
-  const theme = useTheme();
+  const { user, signOut } = useAuth();
+
+  const handleSignOut = async () => {
+    Alert.alert(
+      'Sign Out',
+      'Are you sure you want to sign out?',
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel',
+        },
+        {
+          text: 'Sign Out',
+          style: 'destructive',
+          onPress: async () => {
+            await signOut();
+            router.replace('/(auth)/login');
+          },
+        },
+      ]
+    );
+  };
 
   return (
-    <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.colors.background }]} edges={['top']}>
-      <ScrollView
-        style={styles.container}
-        contentContainerStyle={styles.contentContainer}
-      >
-        <GlassView style={styles.profileHeader} glassEffectStyle="regular">
-          <IconSymbol ios_icon_name="person.circle.fill" android_material_icon_name="person" size={24} color={theme.colors.primary} />
-          <Text style={[styles.name, { color: theme.colors.text }]}>John Doe</Text>
-          <Text style={[styles.email, { color: theme.dark ? '#98989D' : '#666' }]}>john.doe@example.com</Text>
-        </GlassView>
+    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+      <View style={styles.header}>
+        <View style={styles.avatarContainer}>
+          <Text style={styles.avatarText}>
+            {user?.email?.charAt(0).toUpperCase() || 'U'}
+          </Text>
+        </View>
+        <Text style={styles.email}>{user?.email}</Text>
+        <Text style={styles.userId}>User ID: {user?.id.substring(0, 8)}...</Text>
+      </View>
 
-        <GlassView style={styles.section} glassEffectStyle="regular">
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Account Information</Text>
+        <View style={commonStyles.card}>
           <View style={styles.infoRow}>
-            <IconSymbol ios_icon_name="phone.fill" android_material_icon_name="phone" size={24} color={theme.dark ? '#98989D' : '#666'} />
-            <Text style={[styles.infoText, { color: theme.colors.text }]}>+1 (555) 123-4567</Text>
+            <Text style={styles.infoLabel}>Email</Text>
+            <Text style={styles.infoValue}>{user?.email}</Text>
           </View>
+          <View style={styles.divider} />
           <View style={styles.infoRow}>
-            <IconSymbol ios_icon_name="location.fill" android_material_icon_name="location-on" size={24} color={theme.dark ? '#98989D' : '#666'} />
-            <Text style={[styles.infoText, { color: theme.colors.text }]}>San Francisco, CA</Text>
+            <Text style={styles.infoLabel}>Account Created</Text>
+            <Text style={styles.infoValue}>
+              {user?.created_at ? new Date(user.created_at).toLocaleDateString() : 'N/A'}
+            </Text>
           </View>
-        </GlassView>
-      </ScrollView>
-    </SafeAreaView>
+        </View>
+      </View>
+
+      <View style={styles.buttonContainer}>
+        <TouchableOpacity style={[buttonStyles.primary, styles.signOutButton]} onPress={handleSignOut}>
+          <Text style={buttonStyles.text}>Sign Out</Text>
+        </TouchableOpacity>
+      </View>
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-  },
   container: {
     flex: 1,
+    backgroundColor: colors.background,
   },
-  contentContainer: {
-    padding: 20,
+  content: {
+    paddingTop: 60,
+    paddingHorizontal: 24,
+    paddingBottom: 120,
   },
-  profileHeader: {
+  header: {
     alignItems: 'center',
-    borderRadius: 12,
-    padding: 32,
-    marginBottom: 16,
-    gap: 12,
+    marginBottom: 32,
   },
-  name: {
-    fontSize: 24,
-    fontWeight: 'bold',
+  avatarContainer: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: colors.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  avatarText: {
+    fontSize: 32,
+    fontWeight: '700',
+    color: '#FFFFFF',
   },
   email: {
-    fontSize: 16,
+    fontSize: 20,
+    fontWeight: '600',
+    color: colors.text,
+    marginBottom: 4,
+  },
+  userId: {
+    fontSize: 14,
+    color: colors.textSecondary,
   },
   section: {
-    borderRadius: 12,
-    padding: 20,
-    gap: 12,
+    marginBottom: 24,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: colors.text,
+    marginBottom: 12,
   },
   infoRow: {
     flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
-    gap: 12,
+    paddingVertical: 12,
   },
-  infoText: {
+  infoLabel: {
     fontSize: 16,
+    color: colors.textSecondary,
+  },
+  infoValue: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: colors.text,
+  },
+  divider: {
+    height: 1,
+    backgroundColor: colors.border,
+  },
+  buttonContainer: {
+    marginTop: 16,
+  },
+  signOutButton: {
+    backgroundColor: colors.error,
   },
 });
