@@ -38,9 +38,10 @@ interface Job {
   deadlines_and_timelines: any[];
   dependencies: any[];
   ai_changelog: any[];
-  processing_status: 'idle' | 'scheduled' | 'running';
+  processing_status: 'idle' | 'scheduled' | 'running' | 'failed';
   processing_scheduled_for: string | null;
   last_processed_at: string | null;
+  job_overview: string | null;
 }
 
 export default function SummaryTab({ jobId }: SummaryTabProps) {
@@ -68,13 +69,20 @@ export default function SummaryTab({ jobId }: SummaryTabProps) {
       
       const { data, error } = await supabase
         .from('jobs')
-        .select('open_issues, unanswered_questions, next_actions, completed_items, warnings_and_risks, deadlines_and_timelines, dependencies, ai_changelog, processing_status, processing_scheduled_for, last_processed_at')
+        .select('open_issues, unanswered_questions, next_actions, completed_items, warnings_and_risks, deadlines_and_timelines, dependencies, ai_changelog, processing_status, processing_scheduled_for, last_processed_at, job_overview')
         .eq('id', jobId)
         .single();
 
       if (error) {
         console.error('Error fetching job data:', error);
       } else {
+        console.log('Job data fetched:', {
+          overview_length: data.job_overview?.length || 0,
+          open_issues: data.open_issues?.length || 0,
+          questions: data.unanswered_questions?.length || 0,
+          actions: data.next_actions?.length || 0,
+          processing_status: data.processing_status,
+        });
         setJob(data);
       }
     } catch (error) {
@@ -94,6 +102,8 @@ export default function SummaryTab({ jobId }: SummaryTabProps) {
     try {
       setProcessingManually(true);
       
+      console.log('Manually triggering processing for job:', jobId);
+      
       // Call the edge function directly
       const { data, error } = await supabase.functions.invoke('process-chat-batch', {
         body: { job_id: jobId }
@@ -101,10 +111,26 @@ export default function SummaryTab({ jobId }: SummaryTabProps) {
 
       if (error) {
         console.error('Error processing chat:', error);
-        Alert.alert('Processing Error', 'Failed to process chat messages. Please try again.');
+        Alert.alert('Processing Error', `Failed to process chat messages: ${error.message || 'Unknown error'}`);
       } else {
         console.log('Processing result:', data);
-        Alert.alert('Success', 'Chat messages processed successfully!');
+        
+        if (data.results && data.results.length > 0) {
+          const result = data.results[0];
+          if (result.status === 'success') {
+            Alert.alert(
+              'Success', 
+              `Processed ${result.messages_processed} messages. Overview: ${result.overview_length} characters. Changes: ${result.changes_made}`
+            );
+          } else if (result.status === 'skipped') {
+            Alert.alert('Info', 'No new messages to process.');
+          } else if (result.status === 'error') {
+            Alert.alert('Error', `Processing failed: ${result.error}`);
+          }
+        } else {
+          Alert.alert('Success', 'Chat messages processed successfully!');
+        }
+        
         // Refresh the data
         await fetchJobData();
       }
@@ -146,6 +172,22 @@ export default function SummaryTab({ jobId }: SummaryTabProps) {
           />
           <Text style={[styles.statusBadgeText, { color: '#F59E0B' }]}>
             {isPast ? 'Processing pending' : 'Processing scheduled'}
+          </Text>
+        </View>
+      );
+    }
+
+    if (processing_status === 'failed') {
+      return (
+        <View style={[styles.statusBadge, { backgroundColor: '#EF444420', borderColor: '#EF4444' }]}>
+          <IconSymbol
+            ios_icon_name="exclamationmark.triangle"
+            android_material_icon_name="error"
+            size={14}
+            color="#EF4444"
+          />
+          <Text style={[styles.statusBadgeText, { color: '#EF4444' }]}>
+            Processing failed - Try again
           </Text>
         </View>
       );
@@ -337,6 +379,22 @@ export default function SummaryTab({ jobId }: SummaryTabProps) {
         </TouchableOpacity>
       )}
 
+      {/* Debug Info (only show if no overview) */}
+      {!job?.job_overview && (
+        <View style={[styles.debugCard, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}>
+          <Text style={[styles.debugTitle, { color: theme.colors.text }]}>Debug Info</Text>
+          <Text style={[styles.debugText, { color: theme.colors.text }]}>
+            Status: {job?.processing_status || 'unknown'}
+          </Text>
+          <Text style={[styles.debugText, { color: theme.colors.text }]}>
+            Last processed: {job?.last_processed_at ? new Date(job.last_processed_at).toLocaleString() : 'Never'}
+          </Text>
+          <Text style={[styles.debugText, { color: theme.colors.text }]}>
+            Overview: {job?.job_overview === null ? 'null' : job?.job_overview === '' ? 'empty string' : 'has content'}
+          </Text>
+        </View>
+      )}
+
       {cards.map((card, index) => (
         <TouchableOpacity
           key={index}
@@ -433,6 +491,22 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 15,
     fontWeight: '600',
+  },
+  debugCard: {
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 16,
+    borderWidth: 1,
+  },
+  debugTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    marginBottom: 8,
+  },
+  debugText: {
+    fontSize: 12,
+    opacity: 0.7,
+    marginBottom: 4,
   },
   card: {
     borderRadius: 16,
