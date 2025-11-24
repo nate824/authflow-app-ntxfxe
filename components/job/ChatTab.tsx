@@ -153,6 +153,17 @@ export default function ChatTab({ jobId }: ChatTabProps) {
 
       console.log('Fetched messages:', messagesData.length);
 
+      // Debug: Log message data to identify the issue
+      messagesData.forEach((msg, idx) => {
+        console.log(`Message ${idx}:`, {
+          id: msg.id,
+          message_type: msg.message_type,
+          message_type_typeof: typeof msg.message_type,
+          message_text: msg.message_text?.substring(0, 30),
+          has_text: !!msg.message_text,
+        });
+      });
+
       // Step 2: Get unique user IDs from messages
       const userIds = [...new Set(messagesData.map(msg => msg.user_id))];
       console.log('Fetching profiles for user IDs:', userIds);
@@ -391,7 +402,9 @@ export default function ChatTab({ jobId }: ChatTabProps) {
                             : { backgroundColor: theme.colors.card, borderColor: theme.colors.border },
                         ]}
                       >
-                        {msg.message_type === 'text' && (
+                        {/* FIX: More defensive conditional rendering - render text if message_text exists,
+                            regardless of message_type value (handles null, undefined, or incorrect values) */}
+                        {msg.message_text && (
                           <Text
                             style={[
                               styles.messageText,
@@ -399,6 +412,13 @@ export default function ChatTab({ jobId }: ChatTabProps) {
                             ]}
                           >
                             {msg.message_text}
+                          </Text>
+                        )}
+                        
+                        {/* Debug: Show message type if it's not 'text' and there's text content */}
+                        {msg.message_text && msg.message_type !== 'text' && __DEV__ && (
+                          <Text style={[styles.debugText, { color: isCurrentUser ? '#fff' : theme.colors.text }]}>
+                            [Debug: message_type = {String(msg.message_type)}]
                           </Text>
                         )}
                       </View>
@@ -566,6 +586,12 @@ const styles = StyleSheet.create({
   messageText: {
     fontSize: 15,
     lineHeight: 20,
+  },
+  debugText: {
+    fontSize: 10,
+    marginTop: 4,
+    opacity: 0.6,
+    fontStyle: 'italic',
   },
   timestampRow: {
     flexDirection: 'row',
