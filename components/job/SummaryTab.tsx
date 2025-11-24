@@ -8,6 +8,7 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   RefreshControl,
+  Alert,
 } from 'react-native';
 import { useTheme } from '@react-navigation/native';
 import { useRouter, useFocusEffect } from 'expo-router';
@@ -37,6 +38,9 @@ interface Job {
   deadlines_and_timelines: any[];
   dependencies: any[];
   ai_changelog: any[];
+  processing_status: 'idle' | 'scheduled' | 'running';
+  processing_scheduled_for: string | null;
+  last_processed_at: string | null;
 }
 
 export default function SummaryTab({ jobId }: SummaryTabProps) {
@@ -44,6 +48,7 @@ export default function SummaryTab({ jobId }: SummaryTabProps) {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [processingManually, setProcessingManually] = useState(false);
   const [job, setJob] = useState<Job | null>(null);
 
   useEffect(() => {
@@ -63,7 +68,7 @@ export default function SummaryTab({ jobId }: SummaryTabProps) {
       
       const { data, error } = await supabase
         .from('jobs')
-        .select('open_issues, unanswered_questions, next_actions, completed_items, warnings_and_risks, deadlines_and_timelines, dependencies, ai_changelog')
+        .select('open_issues, unanswered_questions, next_actions, completed_items, warnings_and_risks, deadlines_and_timelines, dependencies, ai_changelog, processing_status, processing_scheduled_for, last_processed_at')
         .eq('id', jobId)
         .single();
 
@@ -83,6 +88,101 @@ export default function SummaryTab({ jobId }: SummaryTabProps) {
     setRefreshing(true);
     await fetchJobData();
     setRefreshing(false);
+  };
+
+  const handleManualProcess = async () => {
+    try {
+      setProcessingManually(true);
+      
+      // Call the edge function directly
+      const { data, error } = await supabase.functions.invoke('process-chat-batch', {
+        body: { job_id: jobId }
+      });
+
+      if (error) {
+        console.error('Error processing chat:', error);
+        Alert.alert('Processing Error', 'Failed to process chat messages. Please try again.');
+      } else {
+        console.log('Processing result:', data);
+        Alert.alert('Success', 'Chat messages processed successfully!');
+        // Refresh the data
+        await fetchJobData();
+      }
+    } catch (error) {
+      console.error('Exception processing chat:', error);
+      Alert.alert('Error', 'An unexpected error occurred while processing.');
+    } finally {
+      setProcessingManually(false);
+    }
+  };
+
+  const getProcessingStatusBadge = () => {
+    if (!job) return null;
+
+    const { processing_status, processing_scheduled_for, last_processed_at } = job;
+
+    if (processing_status === 'running') {
+      return (
+        <View style={[styles.statusBadge, { backgroundColor: theme.colors.primary + '20', borderColor: theme.colors.primary }]}>
+          <ActivityIndicator size="small" color={theme.colors.primary} />
+          <Text style={[styles.statusBadgeText, { color: theme.colors.primary }]}>
+            Processing...
+          </Text>
+        </View>
+      );
+    }
+
+    if (processing_status === 'scheduled') {
+      const scheduledTime = processing_scheduled_for ? new Date(processing_scheduled_for) : null;
+      const isPast = scheduledTime && scheduledTime < new Date();
+      
+      return (
+        <View style={[styles.statusBadge, { backgroundColor: '#F59E0B20', borderColor: '#F59E0B' }]}>
+          <IconSymbol
+            ios_icon_name="clock"
+            android_material_icon_name="schedule"
+            size={14}
+            color="#F59E0B"
+          />
+          <Text style={[styles.statusBadgeText, { color: '#F59E0B' }]}>
+            {isPast ? 'Processing pending' : 'Processing scheduled'}
+          </Text>
+        </View>
+      );
+    }
+
+    if (last_processed_at) {
+      const processedTime = new Date(last_processed_at);
+      const now = new Date();
+      const diffMinutes = Math.floor((now.getTime() - processedTime.getTime()) / 60000);
+      
+      let timeText = '';
+      if (diffMinutes < 1) {
+        timeText = 'just now';
+      } else if (diffMinutes < 60) {
+        timeText = `${diffMinutes}m ago`;
+      } else if (diffMinutes < 1440) {
+        timeText = `${Math.floor(diffMinutes / 60)}h ago`;
+      } else {
+        timeText = `${Math.floor(diffMinutes / 1440)}d ago`;
+      }
+
+      return (
+        <View style={[styles.statusBadge, { backgroundColor: '#10B98120', borderColor: '#10B981' }]}>
+          <IconSymbol
+            ios_icon_name="checkmark.circle"
+            android_material_icon_name="check_circle"
+            size={14}
+            color="#10B981"
+          />
+          <Text style={[styles.statusBadgeText, { color: '#10B981' }]}>
+            Last updated {timeText}
+          </Text>
+        </View>
+      );
+    }
+
+    return null;
   };
 
   const cards: SummaryCard[] = [
@@ -211,6 +311,32 @@ export default function SummaryTab({ jobId }: SummaryTabProps) {
         </Text>
       </View>
 
+      {/* Processing Status Badge */}
+      {getProcessingStatusBadge()}
+
+      {/* Manual Process Button */}
+      {job?.processing_status !== 'running' && (
+        <TouchableOpacity
+          style={[styles.processButton, { backgroundColor: theme.colors.primary, opacity: processingManually ? 0.6 : 1 }]}
+          onPress={handleManualProcess}
+          disabled={processingManually}
+        >
+          {processingManually ? (
+            <ActivityIndicator size="small" color="#fff" />
+          ) : (
+            <IconSymbol
+              ios_icon_name="arrow.clockwise"
+              android_material_icon_name="refresh"
+              size={18}
+              color="#fff"
+            />
+          )}
+          <Text style={styles.processButtonText}>
+            {processingManually ? 'Processing...' : 'Process Chat Now'}
+          </Text>
+        </TouchableOpacity>
+      )}
+
       {cards.map((card, index) => (
         <TouchableOpacity
           key={index}
@@ -271,11 +397,41 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     borderRadius: 12,
     borderWidth: 1,
-    marginBottom: 16,
+    marginBottom: 12,
     gap: 6,
   },
   aiLabelText: {
     fontSize: 12,
+    fontWeight: '600',
+  },
+  statusBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    marginBottom: 12,
+    gap: 8,
+  },
+  statusBadgeText: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  processButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    marginBottom: 16,
+    gap: 8,
+  },
+  processButtonText: {
+    color: '#fff',
+    fontSize: 15,
     fontWeight: '600',
   },
   card: {

@@ -35,6 +35,9 @@ interface Job {
   created_by: string;
   created_at: string;
   updated_at: string;
+  processing_status: 'idle' | 'scheduled' | 'running' | 'completed' | 'failed';
+  processing_scheduled_for: string | null;
+  last_processed_at: string | null;
 }
 
 interface User {
@@ -365,6 +368,54 @@ export default function HomeScreen() {
     await signOut();
   };
 
+  const getProcessingStatusBadge = (job: Job) => {
+    const { processing_status, processing_scheduled_for } = job;
+
+    if (processing_status === 'running') {
+      return (
+        <View style={[styles.statusBadge, { backgroundColor: theme.colors.primary + '20', borderColor: theme.colors.primary }]}>
+          <ActivityIndicator size="small" color={theme.colors.primary} />
+          <Text style={[styles.statusBadgeText, { color: theme.colors.primary }]}>Processing</Text>
+        </View>
+      );
+    }
+
+    if (processing_status === 'scheduled') {
+      const scheduledTime = processing_scheduled_for ? new Date(processing_scheduled_for) : null;
+      const isPast = scheduledTime && scheduledTime < new Date();
+      
+      return (
+        <View style={[styles.statusBadge, { backgroundColor: '#F59E0B20', borderColor: '#F59E0B' }]}>
+          <IconSymbol
+            ios_icon_name="clock"
+            android_material_icon_name="schedule"
+            size={12}
+            color="#F59E0B"
+          />
+          <Text style={[styles.statusBadgeText, { color: '#F59E0B' }]}>
+            {isPast ? 'Pending' : 'Scheduled'}
+          </Text>
+        </View>
+      );
+    }
+
+    if (processing_status === 'failed') {
+      return (
+        <View style={[styles.statusBadge, { backgroundColor: '#EF444420', borderColor: '#EF4444' }]}>
+          <IconSymbol
+            ios_icon_name="exclamationmark.triangle"
+            android_material_icon_name="error"
+            size={12}
+            color="#EF4444"
+          />
+          <Text style={[styles.statusBadgeText, { color: '#EF4444' }]}>Failed</Text>
+        </View>
+      );
+    }
+
+    return null;
+  };
+
   return (
     <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
       {/* Header */}
@@ -475,6 +526,8 @@ export default function HomeScreen() {
                   <Text style={[styles.jobDetail, { color: theme.colors.text }]}>{formatDate(job.start_date)}</Text>
                 </View>
               </View>
+              {/* Processing Status Badge */}
+              {getProcessingStatusBadge(job)}
             </TouchableOpacity>
           ))}
         </ScrollView>
@@ -878,6 +931,7 @@ const styles = StyleSheet.create({
   },
   jobCardDetails: {
     gap: 8,
+    marginBottom: 8,
   },
   jobCardRow: {
     flexDirection: 'row',
@@ -888,6 +942,21 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '500',
     opacity: 0.8,
+  },
+  statusBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    gap: 6,
+    marginTop: 4,
+  },
+  statusBadgeText: {
+    fontSize: 11,
+    fontWeight: '600',
   },
   modalOverlay: {
     flex: 1,
