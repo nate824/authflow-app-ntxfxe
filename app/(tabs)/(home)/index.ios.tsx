@@ -12,6 +12,7 @@ import {
   TextInput,
 } from 'react-native';
 import { useTheme } from '@react-navigation/native';
+import { useRouter } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/app/integrations/supabase/client';
 import { IconSymbol } from '@/components/IconSymbol.ios';
@@ -43,6 +44,7 @@ interface User {
 
 export default function HomeScreen() {
   const theme = useTheme();
+  const router = useRouter();
   const { user, signOut } = useAuth();
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [jobs, setJobs] = useState<Job[]>([]);
@@ -125,6 +127,11 @@ export default function HomeScreen() {
     } catch (error) {
       console.error('Exception loading users:', error);
     }
+  };
+
+  const handleJobPress = (job: Job) => {
+    console.log('Navigating to job:', job.id);
+    router.push(`/(tabs)/(home)/job/${job.id}` as any);
   };
 
   const handleLongPress = (job: Job) => {
@@ -395,8 +402,10 @@ export default function HomeScreen() {
             <TouchableOpacity
               key={index}
               style={[styles.jobCard, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}
+              onPress={() => handleJobPress(job)}
               onLongPress={() => handleLongPress(job)}
               delayLongPress={500}
+              activeOpacity={0.7}
             >
               <View style={styles.jobCardHeader}>
                 <Text style={[styles.jobName, { color: theme.colors.text }]}>{job.job_name}</Text>
