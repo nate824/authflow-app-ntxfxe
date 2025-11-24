@@ -1,5 +1,5 @@
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -7,28 +7,61 @@ import {
   ScrollView,
   TouchableOpacity,
   Platform,
+  ActivityIndicator,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useTheme } from '@react-navigation/native';
 import { IconSymbol } from '@/components/IconSymbol';
+import { supabase } from '@/app/integrations/supabase/client';
+
+interface ScopeDocument {
+  id: string;
+  job_id: string;
+  raw_content: string;
+  summary: string;
+  file_name: string | null;
+  created_at: string;
+}
 
 export default function JobOverviewScreen() {
   const router = useRouter();
   const theme = useTheme();
   const { jobId } = useLocalSearchParams();
+  const [scopeDoc, setScopeDoc] = useState<ScopeDocument | null>(null);
+  const [loading, setLoading] = useState(true);
 
-  const overviewText = `This is a comprehensive industrial maintenance project at the Riverside Refinery Complex. The scope includes:
+  useEffect(() => {
+    loadScopeDocument();
+  }, [jobId]);
 
-• Complete inspection and maintenance of Tank B storage system
-• Electrical conduit routing and clearance verification
-• Rope access operations for high-elevation work
-• Scaffold installation and quality assurance
-• Non-destructive testing (NDT) of critical welds
-• Safety compliance and documentation
+  const loadScopeDocument = async () => {
+    try {
+      setLoading(true);
+      const { data, error } = await supabase
+        .from('scope_documents')
+        .select('*')
+        .eq('job_id', jobId)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .single();
 
-The project is scheduled to run for 3 weeks with multiple specialized teams coordinating their efforts. All work must comply with OSHA regulations and site-specific safety protocols.
-
-Key stakeholders include the site operations manager, safety coordinator, and various trade supervisors. Daily briefings are mandatory, and all incidents must be reported immediately.`;
+      if (error) {
+        if (error.code === 'PGRST116') {
+          console.log('No scope document found for this job');
+          setScopeDoc(null);
+        } else {
+          console.error('Error loading scope document:', error);
+        }
+      } else {
+        console.log('Scope document loaded:', data);
+        setScopeDoc(data);
+      }
+    } catch (error) {
+      console.error('Exception loading scope document:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
@@ -50,27 +83,80 @@ Key stakeholders include the site operations manager, safety coordinator, and va
       </View>
 
       {/* Content */}
-      <ScrollView
-        style={styles.scrollView}
-        contentContainerStyle={styles.content}
-        showsVerticalScrollIndicator={false}
-      >
-        <View style={[styles.card, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}>
-          <View style={styles.iconHeader}>
-            <View style={[styles.iconContainer, { backgroundColor: theme.colors.primary + '20' }]}>
-              <IconSymbol
-                ios_icon_name="doc.text"
-                android_material_icon_name="description"
-                size={32}
-                color={theme.colors.primary}
-              />
+      {loading ? (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={theme.colors.primary} />
+          <Text style={[styles.loadingText, { color: theme.colors.text }]}>Loading overview...</Text>
+        </View>
+      ) : scopeDoc ? (
+        <ScrollView
+          style={styles.scrollView}
+          contentContainerStyle={styles.content}
+          showsVerticalScrollIndicator={false}
+        >
+          <View style={[styles.card, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}>
+            <View style={styles.iconHeader}>
+              <View style={[styles.iconContainer, { backgroundColor: theme.colors.primary + '20' }]}>
+                <IconSymbol
+                  ios_icon_name="doc.text"
+                  android_material_icon_name="description"
+                  size={32}
+                  color={theme.colors.primary}
+                />
+              </View>
+            </View>
+            
+            {scopeDoc.file_name && (
+              <View style={[styles.fileInfo, { backgroundColor: theme.colors.background, borderColor: theme.colors.border }]}>
+                <IconSymbol
+                  ios_icon_name="doc"
+                  android_material_icon_name="description"
+                  size={16}
+                  color={theme.colors.text}
+                  style={{ opacity: 0.6 }}
+                />
+                <Text style={[styles.fileInfoText, { color: theme.colors.text }]}>
+                  Source: {scopeDoc.file_name}
+                </Text>
+              </View>
+            )}
+
+            <Text style={[styles.overviewText, { color: theme.colors.text }]}>
+              {scopeDoc.summary}
+            </Text>
+
+            <View style={[styles.footer, { borderTopColor: theme.colors.border }]}>
+              <Text style={[styles.footerText, { color: theme.colors.text }]}>
+                Last updated: {new Date(scopeDoc.created_at).toLocaleDateString('en-US', {
+                  year: 'numeric',
+                  month: 'short',
+                  day: 'numeric',
+                  hour: '2-digit',
+                  minute: '2-digit',
+                })}
+              </Text>
             </View>
           </View>
-          <Text style={[styles.overviewText, { color: theme.colors.text }]}>
-            {overviewText}
+        </ScrollView>
+      ) : (
+        <View style={styles.emptyContainer}>
+          <View style={[styles.emptyIconContainer, { backgroundColor: theme.colors.primary + '10' }]}>
+            <IconSymbol
+              ios_icon_name="doc.text.magnifyingglass"
+              android_material_icon_name="description"
+              size={48}
+              color={theme.colors.text}
+              style={{ opacity: 0.3 }}
+            />
+          </View>
+          <Text style={[styles.emptyTitle, { color: theme.colors.text }]}>
+            No Scope Document
+          </Text>
+          <Text style={[styles.emptyText, { color: theme.colors.text }]}>
+            No scope document has been uploaded for this job yet. An admin can add a scope document from the job menu.
           </Text>
         </View>
-      </ScrollView>
+      )}
     </View>
   );
 }
@@ -102,6 +188,16 @@ const styles = StyleSheet.create({
   headerSpacer: {
     width: 40,
   },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 16,
+  },
+  loadingText: {
+    fontSize: 16,
+    fontWeight: '500',
+  },
   scrollView: {
     flex: 1,
   },
@@ -127,8 +223,58 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
+  fileInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    marginBottom: 16,
+  },
+  fileInfoText: {
+    fontSize: 13,
+    fontWeight: '500',
+    opacity: 0.7,
+  },
   overviewText: {
     fontSize: 15,
     lineHeight: 24,
+  },
+  footer: {
+    marginTop: 20,
+    paddingTop: 16,
+    borderTopWidth: 1,
+  },
+  footerText: {
+    fontSize: 13,
+    opacity: 0.6,
+    textAlign: 'center',
+  },
+  emptyContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 40,
+    gap: 16,
+  },
+  emptyIconContainer: {
+    width: 96,
+    height: 96,
+    borderRadius: 24,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  emptyTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+  },
+  emptyText: {
+    fontSize: 15,
+    textAlign: 'center',
+    opacity: 0.6,
+    lineHeight: 22,
   },
 });
