@@ -122,12 +122,18 @@ export default function ScopeUploadModal({
 
     try {
       setLoading(true);
+      console.log('Starting scope document processing...');
 
       // Get current session
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
-        throw new Error('Not authenticated');
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError || !session) {
+        console.error('Session error:', sessionError);
+        throw new Error('Not authenticated. Please log in again.');
       }
+
+      console.log('Session valid, calling edge function...');
+      console.log('Job ID:', jobId);
+      console.log('Content length:', content.trim().length);
 
       // Call edge function to process scope
       const { data, error } = await supabase.functions.invoke('process-scope', {
@@ -140,9 +146,16 @@ export default function ScopeUploadModal({
         },
       });
 
+      console.log('Edge function response:', { data, error });
+
       if (error) {
         console.error('Error processing scope:', error);
-        throw error;
+        throw new Error(error.message || 'Failed to process scope document');
+      }
+
+      if (!data || !data.success) {
+        console.error('Unexpected response:', data);
+        throw new Error(data?.error || 'Failed to process scope document');
       }
 
       console.log('Scope processed successfully:', data);
@@ -160,9 +173,12 @@ export default function ScopeUploadModal({
           },
         ]
       );
-    } catch (error) {
+    } catch (error: any) {
       console.error('Exception processing scope:', error);
-      Alert.alert('Error', 'Failed to process scope document. Please try again.');
+      Alert.alert(
+        'Error',
+        error.message || 'Failed to process scope document. Please try again.'
+      );
     } finally {
       setLoading(false);
     }
@@ -301,7 +317,10 @@ export default function ScopeUploadModal({
               disabled={loading || !content.trim()}
             >
               {loading ? (
-                <ActivityIndicator color="#fff" />
+                <React.Fragment>
+                  <ActivityIndicator color="#fff" />
+                  <Text style={styles.submitButtonText}>Processing...</Text>
+                </React.Fragment>
               ) : (
                 <React.Fragment>
                   <IconSymbol

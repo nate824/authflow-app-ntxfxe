@@ -7,9 +7,10 @@ import {
   ScrollView,
   TouchableOpacity,
   ActivityIndicator,
+  RefreshControl,
 } from 'react-native';
 import { useTheme } from '@react-navigation/native';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import { IconSymbol } from '@/components/IconSymbol';
 import { supabase } from '@/app/integrations/supabase/client';
 
@@ -31,6 +32,7 @@ export default function SummaryTab({ jobId }: SummaryTabProps) {
   const theme = useTheme();
   const router = useRouter();
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [counts, setCounts] = useState({
     issues: 0,
     questions: 0,
@@ -43,6 +45,13 @@ export default function SummaryTab({ jobId }: SummaryTabProps) {
   useEffect(() => {
     fetchCounts();
   }, [jobId]);
+
+  // Refresh when screen comes back into focus
+  useFocusEffect(
+    React.useCallback(() => {
+      fetchCounts();
+    }, [jobId])
+  );
 
   const fetchCounts = async () => {
     try {
@@ -70,6 +79,12 @@ export default function SummaryTab({ jobId }: SummaryTabProps) {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    await fetchCounts();
+    setRefreshing(false);
   };
 
   const cards: SummaryCard[] = [
@@ -175,6 +190,13 @@ export default function SummaryTab({ jobId }: SummaryTabProps) {
       style={styles.container}
       contentContainerStyle={styles.content}
       showsVerticalScrollIndicator={false}
+      refreshControl={
+        <RefreshControl
+          refreshing={refreshing}
+          onRefresh={handleRefresh}
+          tintColor={theme.colors.primary}
+        />
+      }
     >
       {cards.map((card, index) => (
         <TouchableOpacity

@@ -8,6 +8,7 @@ import {
   TouchableOpacity,
   Platform,
   ActivityIndicator,
+  RefreshControl,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useTheme } from '@react-navigation/native';
@@ -29,6 +30,7 @@ export default function JobOverviewScreen() {
   const { jobId } = useLocalSearchParams();
   const [scopeDoc, setScopeDoc] = useState<ScopeDocument | null>(null);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {
     loadScopeDocument();
@@ -63,6 +65,12 @@ export default function JobOverviewScreen() {
     }
   };
 
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    await loadScopeDocument();
+    setRefreshing(false);
+  };
+
   return (
     <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
       {/* Header */}
@@ -93,6 +101,13 @@ export default function JobOverviewScreen() {
           style={styles.scrollView}
           contentContainerStyle={styles.content}
           showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={handleRefresh}
+              tintColor={theme.colors.primary}
+            />
+          }
         >
           <View style={[styles.card, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}>
             <View style={styles.iconHeader}>
@@ -139,23 +154,39 @@ export default function JobOverviewScreen() {
           </View>
         </ScrollView>
       ) : (
-        <View style={styles.emptyContainer}>
-          <View style={[styles.emptyIconContainer, { backgroundColor: theme.colors.primary + '10' }]}>
-            <IconSymbol
-              ios_icon_name="doc.text.magnifyingglass"
-              android_material_icon_name="description"
-              size={48}
-              color={theme.colors.text}
-              style={{ opacity: 0.3 }}
+        <ScrollView
+          style={styles.scrollView}
+          contentContainerStyle={styles.emptyScrollContent}
+          showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={handleRefresh}
+              tintColor={theme.colors.primary}
             />
+          }
+        >
+          <View style={styles.emptyContainer}>
+            <View style={[styles.emptyIconContainer, { backgroundColor: theme.colors.primary + '10' }]}>
+              <IconSymbol
+                ios_icon_name="doc.text.magnifyingglass"
+                android_material_icon_name="description"
+                size={48}
+                color={theme.colors.text}
+                style={{ opacity: 0.3 }}
+              />
+            </View>
+            <Text style={[styles.emptyTitle, { color: theme.colors.text }]}>
+              No Scope Document
+            </Text>
+            <Text style={[styles.emptyText, { color: theme.colors.text }]}>
+              No scope document has been uploaded for this job yet. An admin can add a scope document from the job menu.
+            </Text>
+            <Text style={[styles.emptyHint, { color: theme.colors.text }]}>
+              Pull down to refresh
+            </Text>
           </View>
-          <Text style={[styles.emptyTitle, { color: theme.colors.text }]}>
-            No Scope Document
-          </Text>
-          <Text style={[styles.emptyText, { color: theme.colors.text }]}>
-            No scope document has been uploaded for this job yet. An admin can add a scope document from the job menu.
-          </Text>
-        </View>
+        </ScrollView>
       )}
     </View>
   );
@@ -252,12 +283,16 @@ const styles = StyleSheet.create({
     opacity: 0.6,
     textAlign: 'center',
   },
+  emptyScrollContent: {
+    flexGrow: 1,
+  },
   emptyContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: 40,
     gap: 16,
+    minHeight: 400,
   },
   emptyIconContainer: {
     width: 96,
@@ -276,5 +311,10 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     opacity: 0.6,
     lineHeight: 22,
+  },
+  emptyHint: {
+    fontSize: 13,
+    opacity: 0.4,
+    marginTop: 8,
   },
 });
