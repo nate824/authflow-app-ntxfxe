@@ -1,5 +1,5 @@
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -7,111 +7,132 @@ import {
   ScrollView,
   TouchableOpacity,
   Platform,
+  ActivityIndicator,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useTheme } from '@react-navigation/native';
 import { IconSymbol } from '@/components/IconSymbol';
+import { supabase } from '@/app/integrations/supabase/client';
 
 interface CompletedItem {
   id: string;
-  text: string;
-  completedBy: string;
-  completedAt: string;
+  item_text: string;
+  completed_by: string;
+  completed_at: string;
+  user_profiles?: {
+    display_name: string;
+  };
 }
 
 export default function CompletedItemsScreen() {
   const router = useRouter();
   const theme = useTheme();
   const { jobId } = useLocalSearchParams();
+  const [items, setItems] = useState<CompletedItem[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const items: CompletedItem[] = [
-    {
-      id: '1',
-      text: 'Radiography on welds 8–13 completed.',
-      completedBy: 'Davis',
-      completedAt: 'Today 11:00 AM',
-    },
-    {
-      id: '2',
-      text: 'Safety briefing filed.',
-      completedBy: 'Martinez',
-      completedAt: 'Today 8:30 AM',
-    },
-    {
-      id: '3',
-      text: 'Scaffold platform alignment verified.',
-      completedBy: 'Chen',
-      completedAt: 'Yesterday 4:15 PM',
-    },
-    {
-      id: '4',
-      text: 'Tank B pressure test passed.',
-      completedBy: 'Johnson',
-      completedAt: 'Yesterday 2:30 PM',
-    },
-    {
-      id: '5',
-      text: 'Rope access equipment inspection.',
-      completedBy: 'Thompson',
-      completedAt: 'Yesterday 10:00 AM',
-    },
-  ];
+  useEffect(() => {
+    fetchCompletedItems();
+  }, [jobId]);
+
+  const fetchCompletedItems = async () => {
+    try {
+      setLoading(true);
+      const { data, error } = await supabase
+        .from('completed_items')
+        .select(`
+          *,
+          user_profiles!completed_items_completed_by_fkey(display_name)
+        `)
+        .eq('job_id', jobId)
+        .order('completed_at', { ascending: false });
+
+      if (error) {
+        console.error('Error fetching completed items:', error);
+      } else {
+        setItems(data || []);
+      }
+    } catch (error) {
+      console.error('Error fetching completed items:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const formatTime = (timestamp: string) => {
+    const date = new Date(timestamp);
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+
+    if (diffHours < 1) {
+      return 'Just now';
+    } else if (diffHours < 24) {
+      return `Today ${date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`;
+    } else if (diffDays === 1) {
+      return `Yesterday ${date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`;
+    } else if (diffDays < 7) {
+      return `${diffDays} days ago`;
+    } else {
+      return date.toLocaleDateString();
+    }
+  };
+
+  if (loading) {
+    return (
+      <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
+        <View style={[styles.header, { backgroundColor: theme.colors.card, borderBottomColor: theme.colors.border }]}>
+          <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
+            <IconSymbol ios_icon_name="chevron.left" android_material_icon_name="arrow_back" size={24} color={theme.colors.text} />
+          </TouchableOpacity>
+          <Text style={[styles.headerTitle, { color: theme.colors.text }]}>Completed Items</Text>
+          <View style={styles.headerSpacer} />
+        </View>
+        <View style={styles.centerContent}>
+          <ActivityIndicator size="large" color={theme.colors.primary} />
+        </View>
+      </View>
+    );
+  }
 
   return (
     <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
-      {/* Header */}
       <View style={[styles.header, { backgroundColor: theme.colors.card, borderBottomColor: theme.colors.border }]}>
-        <TouchableOpacity
-          style={styles.backButton}
-          onPress={() => router.back()}
-        >
-          <IconSymbol
-            ios_icon_name="chevron.left"
-            android_material_icon_name="arrow_back"
-            size={24}
-            color={theme.colors.text}
-          />
+        <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
+          <IconSymbol ios_icon_name="chevron.left" android_material_icon_name="arrow_back" size={24} color={theme.colors.text} />
         </TouchableOpacity>
         <Text style={[styles.headerTitle, { color: theme.colors.text }]}>Completed Items</Text>
         <View style={styles.headerSpacer} />
       </View>
 
-      {/* Content */}
-      <ScrollView
-        style={styles.scrollView}
-        contentContainerStyle={styles.content}
-        showsVerticalScrollIndicator={false}
-      >
-        {items.map((item, index) => (
-          <View
-            key={index}
-            style={[styles.itemCard, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}
-          >
-            <View style={styles.itemHeader}>
-              <View style={[styles.checkIcon, { backgroundColor: '#10B98120' }]}>
-                <IconSymbol
-                  ios_icon_name="checkmark.circle.fill"
-                  android_material_icon_name="check_circle"
-                  size={24}
-                  color="#10B981"
-                />
-              </View>
-              <View style={styles.itemContent}>
-                <Text style={[styles.itemText, { color: theme.colors.text }]}>
-                  {item.text}
-                </Text>
-                <View style={styles.itemFooter}>
-                  <Text style={[styles.completedBy, { color: theme.colors.text }]}>
-                    {item.completedBy}
-                  </Text>
-                  <Text style={[styles.completedAt, { color: theme.colors.text }]}>
-                    {item.completedAt}
-                  </Text>
+      <ScrollView style={styles.scrollView} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+        {items.length === 0 ? (
+          <View style={styles.emptyState}>
+            <IconSymbol ios_icon_name="tray" android_material_icon_name="inbox" size={64} color={theme.colors.text} style={{ opacity: 0.3 }} />
+            <Text style={[styles.emptyStateText, { color: theme.colors.text }]}>No completed items</Text>
+            <Text style={[styles.emptyStateSubtext, { color: theme.colors.text }]}>Completed items will appear here</Text>
+          </View>
+        ) : (
+          items.map((item, index) => (
+            <View key={index} style={[styles.itemCard, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}>
+              <View style={styles.itemHeader}>
+                <View style={[styles.checkIcon, { backgroundColor: '#10B98120' }]}>
+                  <IconSymbol ios_icon_name="checkmark.circle.fill" android_material_icon_name="check_circle" size={24} color="#10B981" />
+                </View>
+                <View style={styles.itemContent}>
+                  <Text style={[styles.itemText, { color: theme.colors.text }]}>{item.item_text}</Text>
+                  <View style={styles.itemFooter}>
+                    <Text style={[styles.completedBy, { color: theme.colors.text }]}>
+                      {item.user_profiles?.display_name || 'Unknown'}
+                    </Text>
+                    <Text style={[styles.completedAt, { color: theme.colors.text }]}>{formatTime(item.completed_at)}</Text>
+                  </View>
                 </View>
               </View>
             </View>
-          </View>
-        ))}
+          ))
+        )}
       </ScrollView>
     </View>
   );
@@ -150,6 +171,29 @@ const styles = StyleSheet.create({
   content: {
     padding: 16,
     paddingBottom: 100,
+  },
+  centerContent: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  emptyState: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 60,
+  },
+  emptyStateText: {
+    fontSize: 18,
+    fontWeight: '600',
+    marginTop: 16,
+    opacity: 0.7,
+  },
+  emptyStateSubtext: {
+    fontSize: 14,
+    marginTop: 8,
+    opacity: 0.5,
+    textAlign: 'center',
   },
   itemCard: {
     borderRadius: 16,

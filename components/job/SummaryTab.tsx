@@ -1,15 +1,17 @@
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
+  ActivityIndicator,
 } from 'react-native';
 import { useTheme } from '@react-navigation/native';
 import { useRouter } from 'expo-router';
 import { IconSymbol } from '@/components/IconSymbol';
+import { supabase } from '@/app/integrations/supabase/client';
 
 interface SummaryTabProps {
   jobId: string;
@@ -28,6 +30,47 @@ interface SummaryCard {
 export default function SummaryTab({ jobId }: SummaryTabProps) {
   const theme = useTheme();
   const router = useRouter();
+  const [loading, setLoading] = useState(true);
+  const [counts, setCounts] = useState({
+    issues: 0,
+    questions: 0,
+    actions: 0,
+    completed: 0,
+    warnings: 0,
+    deadlines: 0,
+  });
+
+  useEffect(() => {
+    fetchCounts();
+  }, [jobId]);
+
+  const fetchCounts = async () => {
+    try {
+      setLoading(true);
+      
+      const [issuesRes, questionsRes, actionsRes, completedRes, warningsRes, deadlinesRes] = await Promise.all([
+        supabase.from('issues').select('id', { count: 'exact', head: true }).eq('job_id', jobId).eq('status', 'open'),
+        supabase.from('questions').select('id', { count: 'exact', head: true }).eq('job_id', jobId).eq('answered', false),
+        supabase.from('actions').select('id', { count: 'exact', head: true }).eq('job_id', jobId).eq('completed', false),
+        supabase.from('completed_items').select('id', { count: 'exact', head: true }).eq('job_id', jobId),
+        supabase.from('warnings').select('id', { count: 'exact', head: true }).eq('job_id', jobId).eq('resolved', false),
+        supabase.from('deadlines').select('id', { count: 'exact', head: true }).eq('job_id', jobId).eq('completed', false),
+      ]);
+
+      setCounts({
+        issues: issuesRes.count || 0,
+        questions: questionsRes.count || 0,
+        actions: actionsRes.count || 0,
+        completed: completedRes.count || 0,
+        warnings: warningsRes.count || 0,
+        deadlines: deadlinesRes.count || 0,
+      });
+    } catch (error) {
+      console.error('Error fetching counts:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const cards: SummaryCard[] = [
     {
@@ -40,7 +83,7 @@ export default function SummaryTab({ jobId }: SummaryTabProps) {
     {
       id: 'issues',
       title: 'Open Issues',
-      count: 6,
+      count: counts.issues,
       icon: 'exclamationmark.triangle',
       androidIcon: 'warning',
       route: `/job-details/issues?jobId=${jobId}`,
@@ -49,7 +92,7 @@ export default function SummaryTab({ jobId }: SummaryTabProps) {
     {
       id: 'questions',
       title: 'Unanswered Questions',
-      count: 3,
+      count: counts.questions,
       icon: 'questionmark.circle',
       androidIcon: 'help',
       route: `/job-details/questions?jobId=${jobId}`,
@@ -58,7 +101,7 @@ export default function SummaryTab({ jobId }: SummaryTabProps) {
     {
       id: 'actions',
       title: 'Next Actions',
-      count: 4,
+      count: counts.actions,
       icon: 'checkmark.circle',
       androidIcon: 'check_circle',
       route: `/job-details/actions?jobId=${jobId}`,
@@ -67,7 +110,7 @@ export default function SummaryTab({ jobId }: SummaryTabProps) {
     {
       id: 'completed',
       title: 'Completed Items',
-      count: 18,
+      count: counts.completed,
       icon: 'checkmark.seal',
       androidIcon: 'verified',
       route: `/job-details/completed?jobId=${jobId}`,
@@ -76,7 +119,7 @@ export default function SummaryTab({ jobId }: SummaryTabProps) {
     {
       id: 'warnings',
       title: 'Warnings & Risks',
-      count: 2,
+      count: counts.warnings,
       icon: 'exclamationmark.shield',
       androidIcon: 'shield',
       route: `/job-details/warnings?jobId=${jobId}`,
@@ -85,7 +128,7 @@ export default function SummaryTab({ jobId }: SummaryTabProps) {
     {
       id: 'deadlines',
       title: 'Deadlines & Timelines',
-      count: 3,
+      count: counts.deadlines,
       icon: 'clock',
       androidIcon: 'schedule',
       route: `/job-details/deadlines?jobId=${jobId}`,
@@ -118,6 +161,14 @@ export default function SummaryTab({ jobId }: SummaryTabProps) {
       console.error('Navigation error:', error);
     }
   };
+
+  if (loading) {
+    return (
+      <View style={[styles.container, styles.centerContent]}>
+        <ActivityIndicator size="large" color={theme.colors.primary} />
+      </View>
+    );
+  }
 
   return (
     <ScrollView
@@ -168,6 +219,10 @@ export default function SummaryTab({ jobId }: SummaryTabProps) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+  },
+  centerContent: {
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   content: {
     padding: 16,

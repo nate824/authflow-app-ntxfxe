@@ -1,5 +1,5 @@
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -7,68 +7,57 @@ import {
   ScrollView,
   TouchableOpacity,
   Platform,
+  ActivityIndicator,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useTheme } from '@react-navigation/native';
 import { IconSymbol } from '@/components/IconSymbol';
+import { supabase } from '@/app/integrations/supabase/client';
 
 interface ChangeLogEntry {
   id: string;
-  time: string;
   action: string;
   details: string;
-  user: string;
+  created_at: string;
+  user_profiles?: {
+    display_name: string;
+  };
 }
 
 export default function ChangeLogScreen() {
   const router = useRouter();
   const theme = useTheme();
   const { jobId } = useLocalSearchParams();
+  const [entries, setEntries] = useState<ChangeLogEntry[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const entries: ChangeLogEntry[] = [
-    {
-      id: '1',
-      time: '11:42 AM',
-      action: 'Issue Updated',
-      details: 'Issue #17 updated',
-      user: 'Rogers',
-    },
-    {
-      id: '2',
-      time: '10:15 AM',
-      action: 'Job Modified',
-      details: 'Job overview modified',
-      user: 'Admin',
-    },
-    {
-      id: '3',
-      time: '9:33 AM',
-      action: 'Question Added',
-      details: 'New question added',
-      user: 'Martinez',
-    },
-    {
-      id: '4',
-      time: '8:45 AM',
-      action: 'Issue Resolved',
-      details: 'Issue #16 marked as complete',
-      user: 'Chen',
-    },
-    {
-      id: '5',
-      time: 'Yesterday',
-      action: 'Document Uploaded',
-      details: 'Safety briefing document uploaded',
-      user: 'Martinez',
-    },
-    {
-      id: '6',
-      time: 'Yesterday',
-      action: 'User Invited',
-      details: 'Thompson invited to job',
-      user: 'Admin',
-    },
-  ];
+  useEffect(() => {
+    fetchChangelog();
+  }, [jobId]);
+
+  const fetchChangelog = async () => {
+    try {
+      setLoading(true);
+      const { data, error } = await supabase
+        .from('changelog')
+        .select(`
+          *,
+          user_profiles!changelog_user_id_fkey(display_name)
+        `)
+        .eq('job_id', jobId)
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.error('Error fetching changelog:', error);
+      } else {
+        setEntries(data || []);
+      }
+    } catch (error) {
+      console.error('Error fetching changelog:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const getActionIcon = (action: string) => {
     if (action.includes('Issue')) {
@@ -84,76 +73,87 @@ export default function ChangeLogScreen() {
     }
   };
 
+  const formatTime = (timestamp: string) => {
+    const date = new Date(timestamp);
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+
+    if (diffHours < 1) {
+      return 'Just now';
+    } else if (diffHours < 24) {
+      return date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+    } else if (diffDays === 1) {
+      return 'Yesterday';
+    } else if (diffDays < 7) {
+      return `${diffDays} days ago`;
+    } else {
+      return date.toLocaleDateString();
+    }
+  };
+
+  if (loading) {
+    return (
+      <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
+        <View style={[styles.header, { backgroundColor: theme.colors.card, borderBottomColor: theme.colors.border }]}>
+          <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
+            <IconSymbol ios_icon_name="chevron.left" android_material_icon_name="arrow_back" size={24} color={theme.colors.text} />
+          </TouchableOpacity>
+          <Text style={[styles.headerTitle, { color: theme.colors.text }]}>Change Log</Text>
+          <View style={styles.headerSpacer} />
+        </View>
+        <View style={styles.centerContent}>
+          <ActivityIndicator size="large" color={theme.colors.primary} />
+        </View>
+      </View>
+    );
+  }
+
   return (
     <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
-      {/* Header */}
       <View style={[styles.header, { backgroundColor: theme.colors.card, borderBottomColor: theme.colors.border }]}>
-        <TouchableOpacity
-          style={styles.backButton}
-          onPress={() => router.back()}
-        >
-          <IconSymbol
-            ios_icon_name="chevron.left"
-            android_material_icon_name="arrow_back"
-            size={24}
-            color={theme.colors.text}
-          />
+        <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
+          <IconSymbol ios_icon_name="chevron.left" android_material_icon_name="arrow_back" size={24} color={theme.colors.text} />
         </TouchableOpacity>
         <Text style={[styles.headerTitle, { color: theme.colors.text }]}>Change Log</Text>
         <View style={styles.headerSpacer} />
       </View>
 
-      {/* Content */}
-      <ScrollView
-        style={styles.scrollView}
-        contentContainerStyle={styles.content}
-        showsVerticalScrollIndicator={false}
-      >
-        {entries.map((entry, index) => {
-          const icon = getActionIcon(entry.action);
-          return (
-            <View
-              key={index}
-              style={[styles.entryCard, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}
-            >
-              <View style={styles.entryHeader}>
-                <View style={[styles.iconContainer, { backgroundColor: theme.colors.primary + '20' }]}>
-                  <IconSymbol
-                    ios_icon_name={icon.ios}
-                    android_material_icon_name={icon.android}
-                    size={20}
-                    color={theme.colors.primary}
-                  />
-                </View>
-                <View style={styles.entryContent}>
-                  <View style={styles.entryTitleRow}>
-                    <Text style={[styles.actionText, { color: theme.colors.text }]}>
-                      {entry.action}
-                    </Text>
-                    <Text style={[styles.timeText, { color: theme.colors.text }]}>
-                      {entry.time}
-                    </Text>
+      <ScrollView style={styles.scrollView} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+        {entries.length === 0 ? (
+          <View style={styles.emptyState}>
+            <IconSymbol ios_icon_name="clock" android_material_icon_name="history" size={64} color={theme.colors.text} style={{ opacity: 0.3 }} />
+            <Text style={[styles.emptyStateText, { color: theme.colors.text }]}>No activity yet</Text>
+            <Text style={[styles.emptyStateSubtext, { color: theme.colors.text }]}>Changes will be logged here</Text>
+          </View>
+        ) : (
+          entries.map((entry, index) => {
+            const icon = getActionIcon(entry.action);
+            return (
+              <View key={index} style={[styles.entryCard, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}>
+                <View style={styles.entryHeader}>
+                  <View style={[styles.iconContainer, { backgroundColor: theme.colors.primary + '20' }]}>
+                    <IconSymbol ios_icon_name={icon.ios} android_material_icon_name={icon.android} size={20} color={theme.colors.primary} />
                   </View>
-                  <Text style={[styles.detailsText, { color: theme.colors.text }]}>
-                    {entry.details}
-                  </Text>
-                  <View style={styles.userRow}>
-                    <IconSymbol
-                      ios_icon_name="person.circle"
-                      android_material_icon_name="account_circle"
-                      size={14}
-                      color={theme.colors.text}
-                      style={{ opacity: 0.6 }}
-                    />
-                    <Text style={[styles.userText, { color: theme.colors.text }]}>
-                      {entry.user}
-                    </Text>
+                  <View style={styles.entryContent}>
+                    <View style={styles.entryTitleRow}>
+                      <Text style={[styles.actionText, { color: theme.colors.text }]}>{entry.action}</Text>
+                      <Text style={[styles.timeText, { color: theme.colors.text }]}>{formatTime(entry.created_at)}</Text>
+                    </View>
+                    <Text style={[styles.detailsText, { color: theme.colors.text }]}>{entry.details}</Text>
+                    <View style={styles.userRow}>
+                      <IconSymbol ios_icon_name="person.circle" android_material_icon_name="account_circle" size={14} color={theme.colors.text} style={{ opacity: 0.6 }} />
+                      <Text style={[styles.userText, { color: theme.colors.text }]}>
+                        {entry.user_profiles?.display_name || 'Unknown'}
+                      </Text>
+                    </View>
                   </View>
                 </View>
               </View>
-            </View>
-          );
-        })}
+            );
+          })
+        )}
       </ScrollView>
     </View>
   );
@@ -192,6 +192,29 @@ const styles = StyleSheet.create({
   content: {
     padding: 16,
     paddingBottom: 100,
+  },
+  centerContent: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  emptyState: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 60,
+  },
+  emptyStateText: {
+    fontSize: 18,
+    fontWeight: '600',
+    marginTop: 16,
+    opacity: 0.7,
+  },
+  emptyStateSubtext: {
+    fontSize: 14,
+    marginTop: 8,
+    opacity: 0.5,
+    textAlign: 'center',
   },
   entryCard: {
     borderRadius: 16,

@@ -1,5 +1,5 @@
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -7,49 +7,53 @@ import {
   ScrollView,
   TouchableOpacity,
   Platform,
+  ActivityIndicator,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useTheme } from '@react-navigation/native';
 import { IconSymbol } from '@/components/IconSymbol';
+import { supabase } from '@/app/integrations/supabase/client';
 
 interface Dependency {
   id: string;
-  dependent: string;
-  dependsOn: string;
-  status: 'blocked' | 'waiting' | 'ready';
+  dependent_task: string;
+  depends_on_task: string;
+  status: 'blocked' | 'waiting' | 'ready' | 'completed';
 }
 
 export default function DependenciesScreen() {
   const router = useRouter();
   const theme = useTheme();
   const { jobId } = useLocalSearchParams();
+  const [dependencies, setDependencies] = useState<Dependency[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const dependencies: Dependency[] = [
-    {
-      id: '1',
-      dependent: 'Rope access climb',
-      dependsOn: 'Scaffold QA',
-      status: 'blocked',
-    },
-    {
-      id: '2',
-      dependent: 'Weld inspection',
-      dependsOn: 'Mechanical clearance',
-      status: 'waiting',
-    },
-    {
-      id: '3',
-      dependent: 'Tank B access',
-      dependsOn: 'Electrical conduit clearance',
-      status: 'blocked',
-    },
-    {
-      id: '4',
-      dependent: 'Final NDT report',
-      dependsOn: 'All weld inspections complete',
-      status: 'waiting',
-    },
-  ];
+  useEffect(() => {
+    fetchDependencies();
+  }, [jobId]);
+
+  const fetchDependencies = async () => {
+    try {
+      setLoading(true);
+      const { data, error } = await supabase
+        .from('dependencies')
+        .select('*')
+        .eq('job_id', jobId)
+        .neq('status', 'completed')
+        .order('status', { ascending: true })
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.error('Error fetching dependencies:', error);
+      } else {
+        setDependencies(data || []);
+      }
+    } catch (error) {
+      console.error('Error fetching dependencies:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -77,67 +81,63 @@ export default function DependenciesScreen() {
     }
   };
 
+  if (loading) {
+    return (
+      <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
+        <View style={[styles.header, { backgroundColor: theme.colors.card, borderBottomColor: theme.colors.border }]}>
+          <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
+            <IconSymbol ios_icon_name="chevron.left" android_material_icon_name="arrow_back" size={24} color={theme.colors.text} />
+          </TouchableOpacity>
+          <Text style={[styles.headerTitle, { color: theme.colors.text }]}>Dependencies</Text>
+          <View style={styles.headerSpacer} />
+        </View>
+        <View style={styles.centerContent}>
+          <ActivityIndicator size="large" color={theme.colors.primary} />
+        </View>
+      </View>
+    );
+  }
+
   return (
     <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
-      {/* Header */}
       <View style={[styles.header, { backgroundColor: theme.colors.card, borderBottomColor: theme.colors.border }]}>
-        <TouchableOpacity
-          style={styles.backButton}
-          onPress={() => router.back()}
-        >
-          <IconSymbol
-            ios_icon_name="chevron.left"
-            android_material_icon_name="arrow_back"
-            size={24}
-            color={theme.colors.text}
-          />
+        <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
+          <IconSymbol ios_icon_name="chevron.left" android_material_icon_name="arrow_back" size={24} color={theme.colors.text} />
         </TouchableOpacity>
         <Text style={[styles.headerTitle, { color: theme.colors.text }]}>Dependencies</Text>
         <View style={styles.headerSpacer} />
       </View>
 
-      {/* Content */}
-      <ScrollView
-        style={styles.scrollView}
-        contentContainerStyle={styles.content}
-        showsVerticalScrollIndicator={false}
-      >
-        {dependencies.map((dependency, index) => (
-          <View
-            key={index}
-            style={[styles.dependencyCard, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}
-          >
-            <View style={styles.statusRow}>
-              <View style={[styles.statusBadge, { backgroundColor: getStatusColor(dependency.status) + '20' }]}>
-                <Text style={[styles.statusText, { color: getStatusColor(dependency.status) }]}>
-                  {getStatusLabel(dependency.status)}
-                </Text>
-              </View>
-            </View>
-            <View style={styles.dependencyContent}>
-              <Text style={[styles.dependentText, { color: theme.colors.text }]}>
-                {dependency.dependent}
-              </Text>
-              <View style={styles.arrowContainer}>
-                <IconSymbol
-                  ios_icon_name="arrow.down"
-                  android_material_icon_name="arrow_downward"
-                  size={20}
-                  color={theme.colors.text}
-                  style={{ opacity: 0.4 }}
-                />
-              </View>
-              <View style={styles.dependsOnContainer}>
-                <Text style={[styles.dependsOnLabel, { color: theme.colors.text }]}>
-                  Depends on:
-                </Text>
-                <Text style={[styles.dependsOnText, { color: theme.colors.text }]}>
-                  {dependency.dependsOn}
-                </Text>
-              </View>
-            </View>
+      <ScrollView style={styles.scrollView} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+        {dependencies.length === 0 ? (
+          <View style={styles.emptyState}>
+            <IconSymbol ios_icon_name="link" android_material_icon_name="link" size={64} color={theme.colors.text} style={{ opacity: 0.3 }} />
+            <Text style={[styles.emptyStateText, { color: theme.colors.text }]}>No dependencies</Text>
+            <Text style={[styles.emptyStateSubtext, { color: theme.colors.text }]}>Task dependencies will appear here</Text>
           </View>
-        ))}
+        ) : (
+          dependencies.map((dependency, index) => (
+            <View key={index} style={[styles.dependencyCard, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}>
+              <View style={styles.statusRow}>
+                <View style={[styles.statusBadge, { backgroundColor: getStatusColor(dependency.status) + '20' }]}>
+                  <Text style={[styles.statusText, { color: getStatusColor(dependency.status) }]}>
+                    {getStatusLabel(dependency.status)}
+                  </Text>
+                </View>
+              </View>
+              <View style={styles.dependencyContent}>
+                <Text style={[styles.dependentText, { color: theme.colors.text }]}>{dependency.dependent_task}</Text>
+                <View style={styles.arrowContainer}>
+                  <IconSymbol ios_icon_name="arrow.down" android_material_icon_name="arrow_downward" size={20} color={theme.colors.text} style={{ opacity: 0.4 }} />
+                </View>
+                <View style={styles.dependsOnContainer}>
+                  <Text style={[styles.dependsOnLabel, { color: theme.colors.text }]}>Depends on:</Text>
+                  <Text style={[styles.dependsOnText, { color: theme.colors.text }]}>{dependency.depends_on_task}</Text>
+                </View>
+              </View>
+            </View>
+          ))
+        )}
       </ScrollView>
     </View>
   );
@@ -176,6 +176,29 @@ const styles = StyleSheet.create({
   content: {
     padding: 16,
     paddingBottom: 100,
+  },
+  centerContent: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  emptyState: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 60,
+  },
+  emptyStateText: {
+    fontSize: 18,
+    fontWeight: '600',
+    marginTop: 16,
+    opacity: 0.7,
+  },
+  emptyStateSubtext: {
+    fontSize: 14,
+    marginTop: 8,
+    opacity: 0.5,
+    textAlign: 'center',
   },
   dependencyCard: {
     borderRadius: 16,

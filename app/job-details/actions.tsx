@@ -1,5 +1,5 @@
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -7,49 +7,59 @@ import {
   ScrollView,
   TouchableOpacity,
   Platform,
+  ActivityIndicator,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useTheme } from '@react-navigation/native';
 import { IconSymbol } from '@/components/IconSymbol';
+import { supabase } from '@/app/integrations/supabase/client';
 
 interface Action {
   id: string;
-  text: string;
-  assignedTo: string;
+  action_text: string;
+  assigned_to: string | null;
   priority: 'high' | 'medium' | 'low';
+  user_profiles?: {
+    display_name: string;
+  };
 }
 
 export default function NextActionsScreen() {
   const router = useRouter();
   const theme = useTheme();
   const { jobId } = useLocalSearchParams();
+  const [actions, setActions] = useState<Action[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const actions: Action[] = [
-    {
-      id: '1',
-      text: 'Electrician to clear conduit from tank B.',
-      assignedTo: 'Rogers',
-      priority: 'high',
-    },
-    {
-      id: '2',
-      text: 'Safety to approve rope team anchors.',
-      assignedTo: 'Martinez',
-      priority: 'high',
-    },
-    {
-      id: '3',
-      text: 'Scaffold QA at 2 PM.',
-      assignedTo: 'Chen',
-      priority: 'medium',
-    },
-    {
-      id: '4',
-      text: 'Submit updated NDT report.',
-      assignedTo: 'Davis',
-      priority: 'medium',
-    },
-  ];
+  useEffect(() => {
+    fetchActions();
+  }, [jobId]);
+
+  const fetchActions = async () => {
+    try {
+      setLoading(true);
+      const { data, error } = await supabase
+        .from('actions')
+        .select(`
+          *,
+          user_profiles!actions_assigned_to_fkey(display_name)
+        `)
+        .eq('job_id', jobId)
+        .eq('completed', false)
+        .order('priority', { ascending: true })
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.error('Error fetching actions:', error);
+      } else {
+        setActions(data || []);
+      }
+    } catch (error) {
+      console.error('Error fetching actions:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const getPriorityColor = (priority: string) => {
     switch (priority) {
@@ -64,58 +74,58 @@ export default function NextActionsScreen() {
     }
   };
 
+  if (loading) {
+    return (
+      <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
+        <View style={[styles.header, { backgroundColor: theme.colors.card, borderBottomColor: theme.colors.border }]}>
+          <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
+            <IconSymbol ios_icon_name="chevron.left" android_material_icon_name="arrow_back" size={24} color={theme.colors.text} />
+          </TouchableOpacity>
+          <Text style={[styles.headerTitle, { color: theme.colors.text }]}>Next Actions</Text>
+          <View style={styles.headerSpacer} />
+        </View>
+        <View style={styles.centerContent}>
+          <ActivityIndicator size="large" color={theme.colors.primary} />
+        </View>
+      </View>
+    );
+  }
+
   return (
     <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
-      {/* Header */}
       <View style={[styles.header, { backgroundColor: theme.colors.card, borderBottomColor: theme.colors.border }]}>
-        <TouchableOpacity
-          style={styles.backButton}
-          onPress={() => router.back()}
-        >
-          <IconSymbol
-            ios_icon_name="chevron.left"
-            android_material_icon_name="arrow_back"
-            size={24}
-            color={theme.colors.text}
-          />
+        <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
+          <IconSymbol ios_icon_name="chevron.left" android_material_icon_name="arrow_back" size={24} color={theme.colors.text} />
         </TouchableOpacity>
         <Text style={[styles.headerTitle, { color: theme.colors.text }]}>Next Actions</Text>
         <View style={styles.headerSpacer} />
       </View>
 
-      {/* Content */}
-      <ScrollView
-        style={styles.scrollView}
-        contentContainerStyle={styles.content}
-        showsVerticalScrollIndicator={false}
-      >
-        {actions.map((action, index) => (
-          <View
-            key={index}
-            style={[styles.actionCard, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}
-          >
-            <View style={styles.actionHeader}>
-              <View style={[styles.priorityDot, { backgroundColor: getPriorityColor(action.priority) }]} />
-              <View style={styles.actionContent}>
-                <Text style={[styles.actionText, { color: theme.colors.text }]}>
-                  {action.text}
-                </Text>
-                <View style={styles.assignedRow}>
-                  <IconSymbol
-                    ios_icon_name="person.circle"
-                    android_material_icon_name="account_circle"
-                    size={14}
-                    color={theme.colors.text}
-                    style={{ opacity: 0.6 }}
-                  />
-                  <Text style={[styles.assignedText, { color: theme.colors.text }]}>
-                    {action.assignedTo}
-                  </Text>
+      <ScrollView style={styles.scrollView} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+        {actions.length === 0 ? (
+          <View style={styles.emptyState}>
+            <IconSymbol ios_icon_name="checkmark.circle" android_material_icon_name="check_circle" size={64} color={theme.colors.text} style={{ opacity: 0.3 }} />
+            <Text style={[styles.emptyStateText, { color: theme.colors.text }]}>No pending actions</Text>
+            <Text style={[styles.emptyStateSubtext, { color: theme.colors.text }]}>All actions have been completed</Text>
+          </View>
+        ) : (
+          actions.map((action, index) => (
+            <View key={index} style={[styles.actionCard, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}>
+              <View style={styles.actionHeader}>
+                <View style={[styles.priorityDot, { backgroundColor: getPriorityColor(action.priority) }]} />
+                <View style={styles.actionContent}>
+                  <Text style={[styles.actionText, { color: theme.colors.text }]}>{action.action_text}</Text>
+                  <View style={styles.assignedRow}>
+                    <IconSymbol ios_icon_name="person.circle" android_material_icon_name="account_circle" size={14} color={theme.colors.text} style={{ opacity: 0.6 }} />
+                    <Text style={[styles.assignedText, { color: theme.colors.text }]}>
+                      {action.user_profiles?.display_name || 'Unassigned'}
+                    </Text>
+                  </View>
                 </View>
               </View>
             </View>
-          </View>
-        ))}
+          ))
+        )}
       </ScrollView>
     </View>
   );
@@ -154,6 +164,29 @@ const styles = StyleSheet.create({
   content: {
     padding: 16,
     paddingBottom: 100,
+  },
+  centerContent: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  emptyState: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 60,
+  },
+  emptyStateText: {
+    fontSize: 18,
+    fontWeight: '600',
+    marginTop: 16,
+    opacity: 0.7,
+  },
+  emptyStateSubtext: {
+    fontSize: 14,
+    marginTop: 8,
+    opacity: 0.5,
+    textAlign: 'center',
   },
   actionCard: {
     borderRadius: 16,

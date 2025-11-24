@@ -1,5 +1,5 @@
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -7,111 +7,142 @@ import {
   ScrollView,
   TouchableOpacity,
   Platform,
+  ActivityIndicator,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useTheme } from '@react-navigation/native';
 import { IconSymbol } from '@/components/IconSymbol';
+import { supabase } from '@/app/integrations/supabase/client';
 
 interface Question {
   id: string;
-  text: string;
-  askedBy: string;
-  timestamp: string;
+  question_text: string;
+  asked_by: string;
+  created_at: string;
+  user_profiles?: {
+    display_name: string;
+  };
 }
 
 export default function UnansweredQuestionsScreen() {
   const router = useRouter();
   const theme = useTheme();
   const { jobId } = useLocalSearchParams();
+  const [questions, setQuestions] = useState<Question[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const questions: Question[] = [
-    {
-      id: '1',
-      text: 'Has anchor approval been granted for south wall?',
-      askedBy: 'Thompson',
-      timestamp: '2 hours ago',
-    },
-    {
-      id: '2',
-      text: 'What are torque specs for valve 22?',
-      askedBy: 'Johnson',
-      timestamp: '4 hours ago',
-    },
-    {
-      id: '3',
-      text: 'When is scaffold QA scheduled?',
-      askedBy: 'Chen',
-      timestamp: 'Yesterday',
-    },
-  ];
+  useEffect(() => {
+    fetchQuestions();
+  }, [jobId]);
+
+  const fetchQuestions = async () => {
+    try {
+      setLoading(true);
+      const { data, error } = await supabase
+        .from('questions')
+        .select(`
+          *,
+          user_profiles!questions_asked_by_fkey(display_name)
+        `)
+        .eq('job_id', jobId)
+        .eq('answered', false)
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.error('Error fetching questions:', error);
+      } else {
+        setQuestions(data || []);
+      }
+    } catch (error) {
+      console.error('Error fetching questions:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleQuestionPress = (question: Question) => {
     console.log('Opening question:', question);
     router.push(`/job-details/question-detail?questionId=${question.id}` as any);
   };
 
+  const formatTime = (timestamp: string) => {
+    const date = new Date(timestamp);
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+
+    if (diffHours < 1) {
+      return 'Just now';
+    } else if (diffHours < 24) {
+      return `${diffHours} hour${diffHours > 1 ? 's' : ''} ago`;
+    } else if (diffDays === 1) {
+      return 'Yesterday';
+    } else if (diffDays < 7) {
+      return `${diffDays} days ago`;
+    } else {
+      return date.toLocaleDateString();
+    }
+  };
+
+  if (loading) {
+    return (
+      <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
+        <View style={[styles.header, { backgroundColor: theme.colors.card, borderBottomColor: theme.colors.border }]}>
+          <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
+            <IconSymbol ios_icon_name="chevron.left" android_material_icon_name="arrow_back" size={24} color={theme.colors.text} />
+          </TouchableOpacity>
+          <Text style={[styles.headerTitle, { color: theme.colors.text }]}>Unanswered Questions</Text>
+          <View style={styles.headerSpacer} />
+        </View>
+        <View style={styles.centerContent}>
+          <ActivityIndicator size="large" color={theme.colors.primary} />
+        </View>
+      </View>
+    );
+  }
+
   return (
     <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
-      {/* Header */}
       <View style={[styles.header, { backgroundColor: theme.colors.card, borderBottomColor: theme.colors.border }]}>
-        <TouchableOpacity
-          style={styles.backButton}
-          onPress={() => router.back()}
-        >
-          <IconSymbol
-            ios_icon_name="chevron.left"
-            android_material_icon_name="arrow_back"
-            size={24}
-            color={theme.colors.text}
-          />
+        <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
+          <IconSymbol ios_icon_name="chevron.left" android_material_icon_name="arrow_back" size={24} color={theme.colors.text} />
         </TouchableOpacity>
         <Text style={[styles.headerTitle, { color: theme.colors.text }]}>Unanswered Questions</Text>
         <View style={styles.headerSpacer} />
       </View>
 
-      {/* Content */}
-      <ScrollView
-        style={styles.scrollView}
-        contentContainerStyle={styles.content}
-        showsVerticalScrollIndicator={false}
-      >
-        {questions.map((question, index) => (
-          <TouchableOpacity
-            key={index}
-            style={[styles.questionCard, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}
-            onPress={() => handleQuestionPress(question)}
-            activeOpacity={0.7}
-          >
-            <View style={styles.questionHeader}>
-              <View style={[styles.iconContainer, { backgroundColor: '#3B82F620' }]}>
-                <IconSymbol
-                  ios_icon_name="questionmark.circle.fill"
-                  android_material_icon_name="help"
-                  size={24}
-                  color="#3B82F6"
-                />
+      <ScrollView style={styles.scrollView} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+        {questions.length === 0 ? (
+          <View style={styles.emptyState}>
+            <IconSymbol ios_icon_name="checkmark.circle" android_material_icon_name="check_circle" size={64} color={theme.colors.text} style={{ opacity: 0.3 }} />
+            <Text style={[styles.emptyStateText, { color: theme.colors.text }]}>No unanswered questions</Text>
+            <Text style={[styles.emptyStateSubtext, { color: theme.colors.text }]}>All questions have been answered</Text>
+          </View>
+        ) : (
+          questions.map((question, index) => (
+            <TouchableOpacity
+              key={index}
+              style={[styles.questionCard, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}
+              onPress={() => handleQuestionPress(question)}
+              activeOpacity={0.7}
+            >
+              <View style={styles.questionHeader}>
+                <View style={[styles.iconContainer, { backgroundColor: '#3B82F620' }]}>
+                  <IconSymbol ios_icon_name="questionmark.circle.fill" android_material_icon_name="help" size={24} color="#3B82F6" />
+                </View>
+                <IconSymbol ios_icon_name="chevron.right" android_material_icon_name="chevron_right" size={20} color={theme.colors.text} style={{ opacity: 0.3 }} />
               </View>
-              <IconSymbol
-                ios_icon_name="chevron.right"
-                android_material_icon_name="chevron_right"
-                size={20}
-                color={theme.colors.text}
-                style={{ opacity: 0.3 }}
-              />
-            </View>
-            <Text style={[styles.questionText, { color: theme.colors.text }]}>
-              {question.text}
-            </Text>
-            <View style={styles.questionFooter}>
-              <Text style={[styles.askedBy, { color: theme.colors.text }]}>
-                Asked by {question.askedBy}
-              </Text>
-              <Text style={[styles.timestamp, { color: theme.colors.text }]}>
-                {question.timestamp}
-              </Text>
-            </View>
-          </TouchableOpacity>
-        ))}
+              <Text style={[styles.questionText, { color: theme.colors.text }]}>{question.question_text}</Text>
+              <View style={styles.questionFooter}>
+                <Text style={[styles.askedBy, { color: theme.colors.text }]}>
+                  Asked by {question.user_profiles?.display_name || 'Unknown'}
+                </Text>
+                <Text style={[styles.timestamp, { color: theme.colors.text }]}>{formatTime(question.created_at)}</Text>
+              </View>
+            </TouchableOpacity>
+          ))
+        )}
       </ScrollView>
     </View>
   );
@@ -150,6 +181,29 @@ const styles = StyleSheet.create({
   content: {
     padding: 16,
     paddingBottom: 100,
+  },
+  centerContent: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  emptyState: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 60,
+  },
+  emptyStateText: {
+    fontSize: 18,
+    fontWeight: '600',
+    marginTop: 16,
+    opacity: 0.7,
+  },
+  emptyStateSubtext: {
+    fontSize: 14,
+    marginTop: 8,
+    opacity: 0.5,
+    textAlign: 'center',
   },
   questionCard: {
     borderRadius: 16,

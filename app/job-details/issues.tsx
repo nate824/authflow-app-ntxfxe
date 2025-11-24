@@ -1,5 +1,5 @@
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -7,149 +7,148 @@ import {
   ScrollView,
   TouchableOpacity,
   Platform,
+  ActivityIndicator,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useTheme } from '@react-navigation/native';
 import { IconSymbol } from '@/components/IconSymbol';
+import { supabase } from '@/app/integrations/supabase/client';
 
 interface Issue {
   id: string;
-  number: number;
+  issue_number: number;
   title: string;
-  assignedTo: string;
-  role: string;
-  lastUpdate: string;
+  assigned_to: string | null;
+  status: string;
+  updated_at: string;
+  user_profiles?: {
+    display_name: string;
+    role: string;
+  };
 }
 
 export default function OpenIssuesScreen() {
   const router = useRouter();
   const theme = useTheme();
   const { jobId } = useLocalSearchParams();
+  const [issues, setIssues] = useState<Issue[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const issues: Issue[] = [
-    {
-      id: '1',
-      number: 17,
-      title: 'Electrical conduit blocking tank B access',
-      assignedTo: 'Rogers',
-      role: 'Electrician',
-      lastUpdate: '11:42 AM',
-    },
-    {
-      id: '2',
-      number: 15,
-      title: 'Scaffold platform misaligned on west side',
-      assignedTo: 'Chen',
-      role: 'Scaffold Lead',
-      lastUpdate: '10:15 AM',
-    },
-    {
-      id: '3',
-      number: 14,
-      title: 'Missing safety harness inspection tags',
-      assignedTo: 'Martinez',
-      role: 'Safety Officer',
-      lastUpdate: '9:30 AM',
-    },
-    {
-      id: '4',
-      number: 12,
-      title: 'Weld prep incomplete on section 8',
-      assignedTo: 'Johnson',
-      role: 'Welder',
-      lastUpdate: 'Yesterday',
-    },
-    {
-      id: '5',
-      number: 11,
-      title: 'NDT equipment calibration expired',
-      assignedTo: 'Davis',
-      role: 'NDT Tech',
-      lastUpdate: 'Yesterday',
-    },
-    {
-      id: '6',
-      number: 9,
-      title: 'Rope access anchor points need re-certification',
-      assignedTo: 'Thompson',
-      role: 'Rope Access',
-      lastUpdate: '2 days ago',
-    },
-  ];
+  useEffect(() => {
+    fetchIssues();
+  }, [jobId]);
+
+  const fetchIssues = async () => {
+    try {
+      setLoading(true);
+      const { data, error } = await supabase
+        .from('issues')
+        .select(`
+          *,
+          user_profiles!issues_assigned_to_fkey(display_name, role)
+        `)
+        .eq('job_id', jobId)
+        .eq('status', 'open')
+        .order('updated_at', { ascending: false });
+
+      if (error) {
+        console.error('Error fetching issues:', error);
+      } else {
+        setIssues(data || []);
+      }
+    } catch (error) {
+      console.error('Error fetching issues:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleIssuePress = (issue: Issue) => {
     console.log('Opening issue:', issue);
-    router.push(`/job-details/issue-detail?issueId=${issue.id}&issueNumber=${issue.number}` as any);
+    router.push(`/job-details/issue-detail?issueId=${issue.id}&issueNumber=${issue.issue_number}` as any);
   };
+
+  const formatTime = (timestamp: string) => {
+    const date = new Date(timestamp);
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+
+    if (diffHours < 1) {
+      return 'Just now';
+    } else if (diffHours < 24) {
+      return `${diffHours} hour${diffHours > 1 ? 's' : ''} ago`;
+    } else if (diffDays === 1) {
+      return 'Yesterday';
+    } else if (diffDays < 7) {
+      return `${diffDays} days ago`;
+    } else {
+      return date.toLocaleDateString();
+    }
+  };
+
+  if (loading) {
+    return (
+      <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
+        <View style={[styles.header, { backgroundColor: theme.colors.card, borderBottomColor: theme.colors.border }]}>
+          <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
+            <IconSymbol ios_icon_name="chevron.left" android_material_icon_name="arrow_back" size={24} color={theme.colors.text} />
+          </TouchableOpacity>
+          <Text style={[styles.headerTitle, { color: theme.colors.text }]}>Open Issues</Text>
+          <View style={styles.headerSpacer} />
+        </View>
+        <View style={styles.centerContent}>
+          <ActivityIndicator size="large" color={theme.colors.primary} />
+        </View>
+      </View>
+    );
+  }
 
   return (
     <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
-      {/* Header */}
       <View style={[styles.header, { backgroundColor: theme.colors.card, borderBottomColor: theme.colors.border }]}>
-        <TouchableOpacity
-          style={styles.backButton}
-          onPress={() => router.back()}
-        >
-          <IconSymbol
-            ios_icon_name="chevron.left"
-            android_material_icon_name="arrow_back"
-            size={24}
-            color={theme.colors.text}
-          />
+        <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
+          <IconSymbol ios_icon_name="chevron.left" android_material_icon_name="arrow_back" size={24} color={theme.colors.text} />
         </TouchableOpacity>
         <Text style={[styles.headerTitle, { color: theme.colors.text }]}>Open Issues</Text>
         <View style={styles.headerSpacer} />
       </View>
 
-      {/* Content */}
-      <ScrollView
-        style={styles.scrollView}
-        contentContainerStyle={styles.content}
-        showsVerticalScrollIndicator={false}
-      >
-        {issues.map((issue, index) => (
-          <TouchableOpacity
-            key={index}
-            style={[styles.issueCard, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}
-            onPress={() => handleIssuePress(issue)}
-            activeOpacity={0.7}
-          >
-            <View style={styles.issueHeader}>
-              <View style={[styles.issueNumber, { backgroundColor: '#F59E0B20' }]}>
-                <Text style={[styles.issueNumberText, { color: '#F59E0B' }]}>
-                  #{issue.number}
-                </Text>
+      <ScrollView style={styles.scrollView} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+        {issues.length === 0 ? (
+          <View style={styles.emptyState}>
+            <IconSymbol ios_icon_name="checkmark.circle" android_material_icon_name="check_circle" size={64} color={theme.colors.text} style={{ opacity: 0.3 }} />
+            <Text style={[styles.emptyStateText, { color: theme.colors.text }]}>No open issues</Text>
+            <Text style={[styles.emptyStateSubtext, { color: theme.colors.text }]}>All issues have been resolved</Text>
+          </View>
+        ) : (
+          issues.map((issue, index) => (
+            <TouchableOpacity
+              key={index}
+              style={[styles.issueCard, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}
+              onPress={() => handleIssuePress(issue)}
+              activeOpacity={0.7}
+            >
+              <View style={styles.issueHeader}>
+                <View style={[styles.issueNumber, { backgroundColor: '#F59E0B20' }]}>
+                  <Text style={[styles.issueNumberText, { color: '#F59E0B' }]}>#{issue.issue_number}</Text>
+                </View>
+                <IconSymbol ios_icon_name="chevron.right" android_material_icon_name="chevron_right" size={20} color={theme.colors.text} style={{ opacity: 0.3 }} />
               </View>
-              <IconSymbol
-                ios_icon_name="chevron.right"
-                android_material_icon_name="chevron_right"
-                size={20}
-                color={theme.colors.text}
-                style={{ opacity: 0.3 }}
-              />
-            </View>
-            <Text style={[styles.issueTitle, { color: theme.colors.text }]}>
-              {issue.title}
-            </Text>
-            <View style={styles.issueFooter}>
-              <View style={styles.assignedInfo}>
-                <IconSymbol
-                  ios_icon_name="person.circle"
-                  android_material_icon_name="account_circle"
-                  size={16}
-                  color={theme.colors.text}
-                  style={{ opacity: 0.6 }}
-                />
-                <Text style={[styles.assignedText, { color: theme.colors.text }]}>
-                  {issue.assignedTo} ({issue.role})
-                </Text>
+              <Text style={[styles.issueTitle, { color: theme.colors.text }]}>{issue.title}</Text>
+              <View style={styles.issueFooter}>
+                <View style={styles.assignedInfo}>
+                  <IconSymbol ios_icon_name="person.circle" android_material_icon_name="account_circle" size={16} color={theme.colors.text} style={{ opacity: 0.6 }} />
+                  <Text style={[styles.assignedText, { color: theme.colors.text }]}>
+                    {issue.user_profiles?.display_name || 'Unassigned'} {issue.user_profiles?.role ? `(${issue.user_profiles.role})` : ''}
+                  </Text>
+                </View>
+                <Text style={[styles.updateTime, { color: theme.colors.text }]}>{formatTime(issue.updated_at)}</Text>
               </View>
-              <Text style={[styles.updateTime, { color: theme.colors.text }]}>
-                {issue.lastUpdate}
-              </Text>
-            </View>
-          </TouchableOpacity>
-        ))}
+            </TouchableOpacity>
+          ))
+        )}
       </ScrollView>
     </View>
   );
@@ -188,6 +187,29 @@ const styles = StyleSheet.create({
   content: {
     padding: 16,
     paddingBottom: 100,
+  },
+  centerContent: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  emptyState: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 60,
+  },
+  emptyStateText: {
+    fontSize: 18,
+    fontWeight: '600',
+    marginTop: 16,
+    opacity: 0.7,
+  },
+  emptyStateSubtext: {
+    fontSize: 14,
+    marginTop: 8,
+    opacity: 0.5,
+    textAlign: 'center',
   },
   issueCard: {
     borderRadius: 16,
