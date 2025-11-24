@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -9,8 +9,11 @@ import {
   TouchableOpacity,
   Image,
   ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { useTheme } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { IconSymbol } from '@/components/IconSymbol';
 import { supabase } from '@/app/integrations/supabase/client';
 
@@ -32,6 +35,8 @@ interface ChatTabProps {
 
 export default function ChatTab({ jobId }: ChatTabProps) {
   const theme = useTheme();
+  const insets = useSafeAreaInsets();
+  const scrollViewRef = useRef<ScrollView>(null);
   const [message, setMessage] = useState('');
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(true);
@@ -65,6 +70,10 @@ export default function ChatTab({ jobId }: ChatTabProps) {
         console.error('Error fetching messages:', error);
       } else {
         setMessages(data || []);
+        // Scroll to bottom after messages load
+        setTimeout(() => {
+          scrollViewRef.current?.scrollToEnd({ animated: false });
+        }, 100);
       }
     } catch (error) {
       console.error('Error fetching messages:', error);
@@ -115,12 +124,21 @@ export default function ChatTab({ jobId }: ChatTabProps) {
   }
 
   return (
-    <View style={styles.container}>
+    <KeyboardAvoidingView
+      style={styles.container}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 140 : 100}
+    >
       {/* Messages */}
       <ScrollView
+        ref={scrollViewRef}
         style={styles.messagesContainer}
-        contentContainerStyle={styles.messagesContent}
+        contentContainerStyle={[
+          styles.messagesContent,
+          { paddingBottom: 20 }
+        ]}
         showsVerticalScrollIndicator={false}
+        onContentSizeChange={() => scrollViewRef.current?.scrollToEnd({ animated: true })}
       >
         {messages.length === 0 ? (
           <View style={styles.emptyState}>
@@ -142,38 +160,27 @@ export default function ChatTab({ jobId }: ChatTabProps) {
           messages.map((msg, index) => {
             const isCurrentUser = msg.user_id === currentUserId;
             return (
-              <View
-                key={index}
-                style={[
-                  styles.messageWrapper,
-                  isCurrentUser ? styles.messageWrapperRight : styles.messageWrapperLeft,
-                ]}
-              >
-                {!isCurrentUser && (
-                  <Text style={[styles.senderName, { color: theme.colors.text }]}>
-                    {msg.user_profiles?.display_name || 'Unknown User'}
-                  </Text>
-                )}
+              <React.Fragment key={index}>
                 <View
                   style={[
-                    styles.messageBubble,
-                    isCurrentUser
-                      ? { backgroundColor: theme.colors.primary }
-                      : { backgroundColor: theme.colors.card, borderColor: theme.colors.border },
+                    styles.messageWrapper,
+                    isCurrentUser ? styles.messageWrapperRight : styles.messageWrapperLeft,
                   ]}
                 >
-                  {msg.message_type === 'text' && (
-                    <Text
-                      style={[
-                        styles.messageText,
-                        { color: isCurrentUser ? '#fff' : theme.colors.text },
-                      ]}
-                    >
-                      {msg.message_text}
+                  {!isCurrentUser && (
+                    <Text style={[styles.senderName, { color: theme.colors.text }]}>
+                      {msg.user_profiles?.display_name || 'Unknown User'}
                     </Text>
                   )}
-                  {msg.message_type === 'image' && (
-                    <View>
+                  <View
+                    style={[
+                      styles.messageBubble,
+                      isCurrentUser
+                        ? { backgroundColor: theme.colors.primary }
+                        : { backgroundColor: theme.colors.card, borderColor: theme.colors.border },
+                    ]}
+                  >
+                    {msg.message_type === 'text' && (
                       <Text
                         style={[
                           styles.messageText,
@@ -182,50 +189,62 @@ export default function ChatTab({ jobId }: ChatTabProps) {
                       >
                         {msg.message_text}
                       </Text>
-                      {msg.image_url && (
-                        <Image
-                          source={{ uri: msg.image_url }}
-                          style={styles.messageImage}
-                          resizeMode="cover"
+                    )}
+                    {msg.message_type === 'image' && (
+                      <View>
+                        <Text
+                          style={[
+                            styles.messageText,
+                            { color: isCurrentUser ? '#fff' : theme.colors.text },
+                          ]}
+                        >
+                          {msg.message_text}
+                        </Text>
+                        {msg.image_url && (
+                          <Image
+                            source={{ uri: msg.image_url }}
+                            style={styles.messageImage}
+                            resizeMode="cover"
+                          />
+                        )}
+                      </View>
+                    )}
+                    {msg.message_type === 'voice' && (
+                      <View style={styles.voiceMessage}>
+                        <IconSymbol
+                          ios_icon_name="waveform"
+                          android_material_icon_name="graphic_eq"
+                          size={20}
+                          color={isCurrentUser ? '#fff' : theme.colors.primary}
                         />
-                      )}
-                    </View>
-                  )}
-                  {msg.message_type === 'voice' && (
-                    <View style={styles.voiceMessage}>
-                      <IconSymbol
-                        ios_icon_name="waveform"
-                        android_material_icon_name="graphic_eq"
-                        size={20}
-                        color={isCurrentUser ? '#fff' : theme.colors.primary}
-                      />
-                      <Text
-                        style={[
-                          styles.messageText,
-                          { color: isCurrentUser ? '#fff' : theme.colors.text },
-                        ]}
-                      >
-                        {msg.message_text}
-                      </Text>
-                      <IconSymbol
-                        ios_icon_name="play.circle.fill"
-                        android_material_icon_name="play_circle"
-                        size={24}
-                        color={isCurrentUser ? '#fff' : theme.colors.primary}
-                      />
-                    </View>
-                  )}
+                        <Text
+                          style={[
+                            styles.messageText,
+                            { color: isCurrentUser ? '#fff' : theme.colors.text },
+                          ]}
+                        >
+                          {msg.message_text}
+                        </Text>
+                        <IconSymbol
+                          ios_icon_name="play.circle.fill"
+                          android_material_icon_name="play_circle"
+                          size={24}
+                          color={isCurrentUser ? '#fff' : theme.colors.primary}
+                        />
+                      </View>
+                    )}
+                  </View>
+                  <Text style={[styles.timestamp, { color: theme.colors.text }]}>
+                    {formatTime(msg.created_at)}
+                  </Text>
                 </View>
-                <Text style={[styles.timestamp, { color: theme.colors.text }]}>
-                  {formatTime(msg.created_at)}
-                </Text>
-              </View>
+              </React.Fragment>
             );
           })
         )}
       </ScrollView>
 
-      {/* Floating Add Button */}
+      {/* Floating Add Button - Repositioned higher up */}
       <TouchableOpacity
         style={[styles.floatingButton, { backgroundColor: theme.colors.primary }]}
         onPress={handleAttachment}
@@ -238,8 +257,17 @@ export default function ChatTab({ jobId }: ChatTabProps) {
         />
       </TouchableOpacity>
 
-      {/* Input Bar */}
-      <View style={[styles.inputContainer, { backgroundColor: theme.colors.card, borderTopColor: theme.colors.border }]}>
+      {/* Input Bar with Safe Area */}
+      <View 
+        style={[
+          styles.inputContainer, 
+          { 
+            backgroundColor: theme.colors.card, 
+            borderTopColor: theme.colors.border,
+            paddingBottom: Math.max(insets.bottom, 12),
+          }
+        ]}
+      >
         <TextInput
           style={[styles.input, { backgroundColor: theme.colors.background, color: theme.colors.text }]}
           placeholder="Type a message..."
@@ -261,7 +289,7 @@ export default function ChatTab({ jobId }: ChatTabProps) {
           />
         </TouchableOpacity>
       </View>
-    </View>
+    </KeyboardAvoidingView>
   );
 }
 
@@ -278,7 +306,6 @@ const styles = StyleSheet.create({
   },
   messagesContent: {
     padding: 16,
-    paddingBottom: 80,
   },
   emptyState: {
     flex: 1,
@@ -344,7 +371,7 @@ const styles = StyleSheet.create({
   },
   floatingButton: {
     position: 'absolute',
-    bottom: 80,
+    bottom: 140,
     right: 20,
     width: 56,
     height: 56,
@@ -353,11 +380,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     boxShadow: '0px 4px 12px rgba(0, 0, 0, 0.15)',
     elevation: 6,
+    zIndex: 10,
   },
   inputContainer: {
     flexDirection: 'row',
     alignItems: 'flex-end',
-    padding: 12,
+    paddingHorizontal: 12,
+    paddingTop: 12,
     gap: 8,
     borderTopWidth: 1,
   },
@@ -375,5 +404,6 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     justifyContent: 'center',
     alignItems: 'center',
+    marginBottom: 2,
   },
 });
