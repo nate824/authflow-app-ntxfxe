@@ -31,6 +31,7 @@ interface Message {
   message_type: 'text' | 'image' | 'voice';
   image_url?: string;
   userProfile?: UserProfile;
+  isOptimistic?: boolean; // Flag for optimistic messages
 }
 
 interface ChatTabProps {
@@ -46,6 +47,7 @@ export default function ChatTab({ jobId }: ChatTabProps) {
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [currentUserProfile, setCurrentUserProfile] = useState<UserProfile | null>(null);
   const channelRef = useRef<RealtimeChannel | null>(null);
 
   useEffect(() => {
@@ -64,6 +66,23 @@ export default function ChatTab({ jobId }: ChatTabProps) {
     const { data: { user } } = await supabase.auth.getUser();
     if (user) {
       setCurrentUserId(user.id);
+      
+      // Fetch current user's profile for optimistic updates
+      const { data: profileData } = await supabase
+        .from('user_profiles')
+        .select('user_id, display_name, avatar_url')
+        .eq('user_id', user.id)
+        .single();
+      
+      if (profileData) {
+        setCurrentUserProfile(profileData);
+      } else {
+        setCurrentUserProfile({
+          user_id: user.id,
+          display_name: null,
+          avatar_url: null,
+        });
+      }
     }
   };
 
@@ -80,8 +99,26 @@ export default function ChatTab({ jobId }: ChatTabProps) {
           filter: `job_id=eq.${jobId}`,
         },
         (payload) => {
-          console.log('New message received:', payload);
-          fetchMessages(); // Refetch to get the message with user profile
+          console.log('New message received via Realtime:', payload);
+          
+          // Remove optimistic message if it exists and replace with real one
+          setMessages(prev => {
+            // Check if this message was already added optimistically
+            const hasOptimistic = prev.some(msg => msg.isOptimistic && msg.message_text === payload.new.message_text);
+            
+            if (hasOptimistic) {
+              // Replace optimistic message with real one
+              return prev.map(msg => 
+                msg.isOptimistic && msg.message_text === payload.new.message_text
+                  ? { ...payload.new as Message, isOptimistic: false }
+                  : msg
+              );
+            } else {
+              // This is a message from another user, fetch to get profile
+              fetchMessages();
+              return prev;
+            }
+          });
         }
       )
       .subscribe((status) => {
@@ -143,6 +180,7 @@ export default function ChatTab({ jobId }: ChatTabProps) {
             display_name: null,
             avatar_url: null,
           },
+          isOptimistic: false,
         };
       });
 
@@ -171,6 +209,30 @@ export default function ChatTab({ jobId }: ChatTabProps) {
       setSending(true);
       console.log('Sending message:', { jobId, userId: currentUserId, message: trimmedMessage });
 
+      // Create optimistic message with temporary ID
+      const optimisticMessage: Message = {
+        id: `temp-${Date.now()}`,
+        message_text: trimmedMessage,
+        user_id: currentUserId,
+        created_at: new Date().toISOString(),
+        message_type: 'text',
+        userProfile: currentUserProfile || {
+          user_id: currentUserId,
+          display_name: null,
+          avatar_url: null,
+        },
+        isOptimistic: true,
+      };
+
+      // Add optimistic message immediately
+      setMessages(prev => [...prev, optimisticMessage]);
+      setMessage('');
+      
+      // Scroll to bottom to show new message
+      setTimeout(() => {
+        scrollViewRef.current?.scrollToEnd({ animated: true });
+      }, 50);
+
       const { data, error } = await supabase
         .from('chat_messages')
         .insert({
@@ -183,11 +245,32 @@ export default function ChatTab({ jobId }: ChatTabProps) {
 
       if (error) {
         console.error('Error sending message:', error);
+        
+        // Remove optimistic message on error
+        setMessages(prev => prev.filter(msg => msg.id !== optimisticMessage.id));
+        
         alert('Failed to send message. Please try again.');
       } else {
         console.log('Message sent successfully:', data);
-        setMessage('');
-        // The realtime subscription will handle adding the message to the list
+        
+        // Replace optimistic message with real one
+        if (data && data.length > 0) {
+          setMessages(prev => prev.map(msg => 
+            msg.id === optimisticMessage.id
+              ? {
+                  ...data[0],
+                  userProfile: currentUserProfile || {
+                    user_id: currentUserId,
+                    display_name: null,
+                    avatar_url: null,
+                  },
+                  isOptimistic: false,
+                }
+              : msg
+          ));
+        }
+        
+        // The realtime subscription will also handle this, but optimistic update is faster
       }
     } catch (error) {
       console.error('Error sending message:', error);
@@ -304,7 +387,7 @@ export default function ChatTab({ jobId }: ChatTabProps) {
                         style={[
                           styles.messageBubble,
                           isCurrentUser
-                            ? { backgroundColor: theme.colors.primary }
+                            ? { backgroundColor: theme.colors.primary, opacity: msg.isOptimistic ? 0.7 : 1 }
                             : { backgroundColor: theme.colors.card, borderColor: theme.colors.border },
                         ]}
                       >
@@ -319,9 +402,16 @@ export default function ChatTab({ jobId }: ChatTabProps) {
                           </Text>
                         )}
                       </View>
-                      <Text style={[styles.timestamp, { color: theme.colors.text }]}>
-                        {formatTime(msg.created_at)}
-                      </Text>
+                      <View style={styles.timestampRow}>
+                        <Text style={[styles.timestamp, { color: theme.colors.text }]}>
+                          {formatTime(msg.created_at)}
+                        </Text>
+                        {msg.isOptimistic && (
+                          <Text style={[styles.sendingIndicator, { color: theme.colors.text }]}>
+                            Sending...
+                          </Text>
+                        )}
+                      </View>
                     </View>
 
                     {isCurrentUser && (
@@ -477,11 +567,21 @@ const styles = StyleSheet.create({
     fontSize: 15,
     lineHeight: 20,
   },
-  timestamp: {
-    fontSize: 11,
+  timestampRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
     marginTop: 4,
     marginLeft: 4,
+  },
+  timestamp: {
+    fontSize: 11,
     opacity: 0.5,
+  },
+  sendingIndicator: {
+    fontSize: 11,
+    opacity: 0.5,
+    fontStyle: 'italic',
   },
   floatingButton: {
     position: 'absolute',
