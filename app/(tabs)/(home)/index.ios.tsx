@@ -40,6 +40,7 @@ interface User {
   id: string;
   user_id: string;
   display_name: string | null;
+  is_invited?: boolean;
 }
 
 export default function HomeScreen() {
@@ -57,6 +58,7 @@ export default function HomeScreen() {
   const [showScopeModal, setShowScopeModal] = useState(false);
   const [allUsers, setAllUsers] = useState<User[]>([]);
   const [selectedUsers, setSelectedUsers] = useState<string[]>([]);
+  const [loadingUsers, setLoadingUsers] = useState(false);
   
   // Form states
   const [jobName, setJobName] = useState('');
@@ -112,20 +114,46 @@ export default function HomeScreen() {
   };
 
   const loadAllUsers = async () => {
+    if (!selectedJob) return;
+    
     try {
-      const { data, error } = await supabase
+      setLoadingUsers(true);
+      
+      // Get all users except the current admin
+      const { data: usersData, error: usersError } = await supabase
         .from('user_profiles')
         .select('id, user_id, display_name')
+        .neq('user_id', user?.id)
         .order('display_name', { ascending: true });
 
-      if (error) {
-        console.error('Error loading users:', error);
-      } else {
-        console.log('Users loaded:', data);
-        setAllUsers(data || []);
+      if (usersError) {
+        console.error('Error loading users:', usersError);
+        return;
       }
+
+      // Get existing invitations for this job
+      const { data: invitationsData, error: invitationsError } = await supabase
+        .from('job_invitations')
+        .select('user_id')
+        .eq('job_id', selectedJob.id);
+
+      if (invitationsError) {
+        console.error('Error loading invitations:', invitationsError);
+      }
+
+      // Mark users who are already invited
+      const invitedUserIds = new Set(invitationsData?.map(inv => inv.user_id) || []);
+      const usersWithInviteStatus = (usersData || []).map(user => ({
+        ...user,
+        is_invited: invitedUserIds.has(user.user_id)
+      }));
+
+      console.log('Users loaded:', usersWithInviteStatus);
+      setAllUsers(usersWithInviteStatus);
     } catch (error) {
       console.error('Exception loading users:', error);
+    } finally {
+      setLoadingUsers(false);
     }
   };
 
@@ -223,9 +251,9 @@ export default function HomeScreen() {
 
   const handleInviteTechnicians = () => {
     setShowMenu(false);
-    loadAllUsers();
     setSelectedUsers([]);
     setShowInviteModal(true);
+    loadAllUsers();
   };
 
   const handleUploadScope = () => {
@@ -238,7 +266,12 @@ export default function HomeScreen() {
     loadJobs();
   };
 
-  const toggleUserSelection = (userId: string) => {
+  const toggleUserSelection = (userId: string, isInvited: boolean) => {
+    if (isInvited) {
+      Alert.alert('Already Invited', 'This user has already been invited to this job.');
+      return;
+    }
+    
     setSelectedUsers((prev) =>
       prev.includes(userId)
         ? prev.filter((id) => id !== userId)
@@ -265,7 +298,7 @@ export default function HomeScreen() {
 
       if (error) {
         console.error('Error sending invitations:', error);
-        Alert.alert('Error', 'Failed to send invitations. Some users may already be invited.');
+        Alert.alert('Error', 'Failed to send invitations');
       } else {
         Alert.alert('Success', `Invited ${selectedUsers.length} user(s) to the job`);
         setShowInviteModal(false);
@@ -642,39 +675,63 @@ export default function HomeScreen() {
             <Text style={[styles.inviteSubtitle, { color: theme.colors.text }]}>
               Select users to invite to {selectedJob?.job_name}
             </Text>
-            <ScrollView style={styles.userList} showsVerticalScrollIndicator={false}>
-              {allUsers.map((user, index) => (
-                <TouchableOpacity
-                  key={index}
-                  style={[
-                    styles.userItem,
-                    { borderColor: theme.colors.border },
-                    selectedUsers.includes(user.user_id) && { backgroundColor: theme.colors.primary + '20', borderColor: theme.colors.primary }
-                  ]}
-                  onPress={() => toggleUserSelection(user.user_id)}
-                >
-                  <View style={styles.userItemContent}>
-                    <IconSymbol
-                      ios_icon_name="person.circle"
-                      android_material_icon_name="account_circle"
-                      size={24}
-                      color={theme.colors.text}
-                    />
-                    <Text style={[styles.userName, { color: theme.colors.text }]}>
-                      {user.display_name || 'Unknown User'}
-                    </Text>
-                  </View>
-                  {selectedUsers.includes(user.user_id) && (
-                    <IconSymbol
-                      ios_icon_name="checkmark.circle.fill"
-                      android_material_icon_name="check_circle"
-                      size={24}
-                      color={theme.colors.primary}
-                    />
-                  )}
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
+            
+            {loadingUsers ? (
+              <View style={styles.loadingUsersContainer}>
+                <ActivityIndicator size="small" color={theme.colors.primary} />
+                <Text style={[styles.loadingUsersText, { color: theme.colors.text }]}>Loading users...</Text>
+              </View>
+            ) : allUsers.length === 0 ? (
+              <View style={styles.emptyUsersContainer}>
+                <Text style={[styles.emptyUsersText, { color: theme.colors.text }]}>
+                  No other users available to invite
+                </Text>
+              </View>
+            ) : (
+              <ScrollView style={styles.userList} showsVerticalScrollIndicator={false}>
+                {allUsers.map((userItem, index) => (
+                  <TouchableOpacity
+                    key={index}
+                    style={[
+                      styles.userItem,
+                      { borderColor: theme.colors.border },
+                      selectedUsers.includes(userItem.user_id) && { backgroundColor: theme.colors.primary + '20', borderColor: theme.colors.primary },
+                      userItem.is_invited && { opacity: 0.5 }
+                    ]}
+                    onPress={() => toggleUserSelection(userItem.user_id, userItem.is_invited || false)}
+                    disabled={userItem.is_invited}
+                  >
+                    <View style={styles.userItemContent}>
+                      <IconSymbol
+                        ios_icon_name="person.circle"
+                        android_material_icon_name="account_circle"
+                        size={24}
+                        color={theme.colors.text}
+                      />
+                      <View style={styles.userInfo}>
+                        <Text style={[styles.userName, { color: theme.colors.text }]}>
+                          {userItem.display_name || 'Unknown User'}
+                        </Text>
+                        {userItem.is_invited && (
+                          <Text style={[styles.invitedLabel, { color: theme.colors.text }]}>
+                            Already invited
+                          </Text>
+                        )}
+                      </View>
+                    </View>
+                    {selectedUsers.includes(userItem.user_id) && !userItem.is_invited && (
+                      <IconSymbol
+                        ios_icon_name="checkmark.circle.fill"
+                        android_material_icon_name="check_circle"
+                        size={24}
+                        color={theme.colors.primary}
+                      />
+                    )}
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            )}
+            
             <View style={styles.formActions}>
               <TouchableOpacity
                 style={[styles.formButton, styles.formButtonSecondary, { borderColor: theme.colors.border }]}
@@ -689,6 +746,7 @@ export default function HomeScreen() {
               <TouchableOpacity
                 style={[styles.formButton, styles.formButtonPrimary, { backgroundColor: theme.colors.primary }]}
                 onPress={handleSendInvites}
+                disabled={selectedUsers.length === 0}
               >
                 <Text style={[styles.formButtonText, { color: '#fff' }]}>
                   Invite ({selectedUsers.length})
@@ -938,6 +996,26 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     opacity: 0.7,
   },
+  loadingUsersContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+    paddingVertical: 40,
+  },
+  loadingUsersText: {
+    fontSize: 14,
+    opacity: 0.7,
+  },
+  emptyUsersContainer: {
+    paddingVertical: 40,
+    alignItems: 'center',
+  },
+  emptyUsersText: {
+    fontSize: 14,
+    opacity: 0.7,
+    textAlign: 'center',
+  },
   userList: {
     maxHeight: 300,
     marginBottom: 16,
@@ -955,9 +1033,18 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
+    flex: 1,
+  },
+  userInfo: {
+    flex: 1,
   },
   userName: {
     fontSize: 16,
     fontWeight: '500',
+  },
+  invitedLabel: {
+    fontSize: 12,
+    opacity: 0.6,
+    marginTop: 2,
   },
 });
