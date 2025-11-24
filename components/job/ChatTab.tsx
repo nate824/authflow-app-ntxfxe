@@ -161,6 +161,7 @@ export default function ChatTab({ jobId }: ChatTabProps) {
           message_type_typeof: typeof msg.message_type,
           message_text: msg.message_text?.substring(0, 30),
           has_text: !!msg.message_text,
+          text_length: msg.message_text?.length,
         });
       });
 
@@ -371,6 +372,17 @@ export default function ChatTab({ jobId }: ChatTabProps) {
             const displayName = msg.userProfile?.display_name || 'User';
             const initials = getUserInitials(msg.userProfile?.display_name, msg.user_id);
             const avatarColor = getAvatarColor(msg.user_id);
+            
+            // Ensure we have message text to display
+            const messageText = msg.message_text || '[No message text]';
+            
+            // Log for debugging
+            console.log(`Rendering message ${index}:`, {
+              id: msg.id,
+              hasText: !!msg.message_text,
+              textLength: msg.message_text?.length,
+              messageType: msg.message_type,
+            });
 
             return (
               <React.Fragment key={index}>
@@ -402,25 +414,18 @@ export default function ChatTab({ jobId }: ChatTabProps) {
                             : { backgroundColor: theme.colors.card, borderColor: theme.colors.border },
                         ]}
                       >
-                        {/* FIX: More defensive conditional rendering - render text if message_text exists,
-                            regardless of message_type value (handles null, undefined, or incorrect values) */}
-                        {msg.message_text && (
-                          <Text
-                            style={[
-                              styles.messageText,
-                              { color: isCurrentUser ? '#fff' : theme.colors.text },
-                            ]}
-                          >
-                            {msg.message_text}
-                          </Text>
-                        )}
-                        
-                        {/* Debug: Show message type if it's not 'text' and there's text content */}
-                        {msg.message_text && msg.message_type !== 'text' && __DEV__ && (
-                          <Text style={[styles.debugText, { color: isCurrentUser ? '#fff' : theme.colors.text }]}>
-                            [Debug: message_type = {String(msg.message_type)}]
-                          </Text>
-                        )}
+                        <Text
+                          style={[
+                            styles.messageText,
+                            { 
+                              color: isCurrentUser ? '#FFFFFF' : theme.colors.text,
+                            },
+                          ]}
+                          numberOfLines={undefined}
+                          ellipsizeMode="tail"
+                        >
+                          {messageText}
+                        </Text>
                       </View>
                       <View style={styles.timestampRow}>
                         <Text style={[styles.timestamp, { color: theme.colors.text }]}>
@@ -582,16 +587,12 @@ const styles = StyleSheet.create({
     padding: 12,
     borderWidth: 1,
     borderColor: 'transparent',
+    minHeight: 40,
   },
   messageText: {
-    fontSize: 15,
-    lineHeight: 20,
-  },
-  debugText: {
-    fontSize: 10,
-    marginTop: 4,
-    opacity: 0.6,
-    fontStyle: 'italic',
+    fontSize: 16,
+    lineHeight: 22,
+    fontWeight: '400',
   },
   timestampRow: {
     flexDirection: 'row',
