@@ -28,54 +28,52 @@ interface SummaryCard {
   color?: string;
 }
 
+interface Job {
+  open_issues: any[];
+  unanswered_questions: any[];
+  next_actions: any[];
+  completed_items: any[];
+  warnings_and_risks: any[];
+  deadlines_and_timelines: any[];
+  dependencies: any[];
+  ai_changelog: any[];
+}
+
 export default function SummaryTab({ jobId }: SummaryTabProps) {
   const theme = useTheme();
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [counts, setCounts] = useState({
-    issues: 0,
-    questions: 0,
-    actions: 0,
-    completed: 0,
-    warnings: 0,
-    deadlines: 0,
-  });
+  const [job, setJob] = useState<Job | null>(null);
 
   useEffect(() => {
-    fetchCounts();
+    fetchJobData();
   }, [jobId]);
 
   // Refresh when screen comes back into focus
   useFocusEffect(
     React.useCallback(() => {
-      fetchCounts();
+      fetchJobData();
     }, [jobId])
   );
 
-  const fetchCounts = async () => {
+  const fetchJobData = async () => {
     try {
       setLoading(true);
       
-      const [issuesRes, questionsRes, actionsRes, completedRes, warningsRes, deadlinesRes] = await Promise.all([
-        supabase.from('issues').select('id', { count: 'exact', head: true }).eq('job_id', jobId).eq('status', 'open'),
-        supabase.from('questions').select('id', { count: 'exact', head: true }).eq('job_id', jobId).eq('answered', false),
-        supabase.from('actions').select('id', { count: 'exact', head: true }).eq('job_id', jobId).eq('completed', false),
-        supabase.from('completed_items').select('id', { count: 'exact', head: true }).eq('job_id', jobId),
-        supabase.from('warnings').select('id', { count: 'exact', head: true }).eq('job_id', jobId).eq('resolved', false),
-        supabase.from('deadlines').select('id', { count: 'exact', head: true }).eq('job_id', jobId).eq('completed', false),
-      ]);
+      const { data, error } = await supabase
+        .from('jobs')
+        .select('open_issues, unanswered_questions, next_actions, completed_items, warnings_and_risks, deadlines_and_timelines, dependencies, ai_changelog')
+        .eq('id', jobId)
+        .single();
 
-      setCounts({
-        issues: issuesRes.count || 0,
-        questions: questionsRes.count || 0,
-        actions: actionsRes.count || 0,
-        completed: completedRes.count || 0,
-        warnings: warningsRes.count || 0,
-        deadlines: deadlinesRes.count || 0,
-      });
+      if (error) {
+        console.error('Error fetching job data:', error);
+      } else {
+        setJob(data);
+      }
     } catch (error) {
-      console.error('Error fetching counts:', error);
+      console.error('Error fetching job data:', error);
     } finally {
       setLoading(false);
     }
@@ -83,7 +81,7 @@ export default function SummaryTab({ jobId }: SummaryTabProps) {
 
   const handleRefresh = async () => {
     setRefreshing(true);
-    await fetchCounts();
+    await fetchJobData();
     setRefreshing(false);
   };
 
@@ -91,14 +89,14 @@ export default function SummaryTab({ jobId }: SummaryTabProps) {
     {
       id: 'overview',
       title: 'Job Overview',
-      icon: 'doc.text',
-      androidIcon: 'description',
+      icon: 'sparkles',
+      androidIcon: 'auto_awesome',
       route: `/job-details/overview?jobId=${jobId}`,
     },
     {
       id: 'issues',
       title: 'Open Issues',
-      count: counts.issues,
+      count: job?.open_issues?.length || 0,
       icon: 'exclamationmark.triangle',
       androidIcon: 'warning',
       route: `/job-details/issues?jobId=${jobId}`,
@@ -107,7 +105,7 @@ export default function SummaryTab({ jobId }: SummaryTabProps) {
     {
       id: 'questions',
       title: 'Unanswered Questions',
-      count: counts.questions,
+      count: job?.unanswered_questions?.length || 0,
       icon: 'questionmark.circle',
       androidIcon: 'help',
       route: `/job-details/questions?jobId=${jobId}`,
@@ -116,7 +114,7 @@ export default function SummaryTab({ jobId }: SummaryTabProps) {
     {
       id: 'actions',
       title: 'Next Actions',
-      count: counts.actions,
+      count: job?.next_actions?.length || 0,
       icon: 'checkmark.circle',
       androidIcon: 'check_circle',
       route: `/job-details/actions?jobId=${jobId}`,
@@ -125,7 +123,7 @@ export default function SummaryTab({ jobId }: SummaryTabProps) {
     {
       id: 'completed',
       title: 'Completed Items',
-      count: counts.completed,
+      count: job?.completed_items?.length || 0,
       icon: 'checkmark.seal',
       androidIcon: 'verified',
       route: `/job-details/completed?jobId=${jobId}`,
@@ -134,7 +132,7 @@ export default function SummaryTab({ jobId }: SummaryTabProps) {
     {
       id: 'warnings',
       title: 'Warnings & Risks',
-      count: counts.warnings,
+      count: job?.warnings_and_risks?.length || 0,
       icon: 'exclamationmark.shield',
       androidIcon: 'shield',
       route: `/job-details/warnings?jobId=${jobId}`,
@@ -143,7 +141,7 @@ export default function SummaryTab({ jobId }: SummaryTabProps) {
     {
       id: 'deadlines',
       title: 'Deadlines & Timelines',
-      count: counts.deadlines,
+      count: job?.deadlines_and_timelines?.length || 0,
       icon: 'clock',
       androidIcon: 'schedule',
       route: `/job-details/deadlines?jobId=${jobId}`,
@@ -152,6 +150,7 @@ export default function SummaryTab({ jobId }: SummaryTabProps) {
     {
       id: 'dependencies',
       title: 'Dependencies',
+      count: job?.dependencies?.length || 0,
       icon: 'link',
       androidIcon: 'link',
       route: `/job-details/dependencies?jobId=${jobId}`,
@@ -160,6 +159,7 @@ export default function SummaryTab({ jobId }: SummaryTabProps) {
     {
       id: 'changelog',
       title: 'Change Log',
+      count: job?.ai_changelog?.length || 0,
       icon: 'list.bullet.rectangle',
       androidIcon: 'history',
       route: `/job-details/changelog?jobId=${jobId}`,
@@ -198,6 +198,19 @@ export default function SummaryTab({ jobId }: SummaryTabProps) {
         />
       }
     >
+      {/* AI Label */}
+      <View style={[styles.aiLabel, { backgroundColor: theme.colors.primary + '10', borderColor: theme.colors.primary + '30' }]}>
+        <IconSymbol
+          ios_icon_name="sparkles"
+          android_material_icon_name="auto_awesome"
+          size={14}
+          color={theme.colors.primary}
+        />
+        <Text style={[styles.aiLabelText, { color: theme.colors.primary }]}>
+          AI-Powered Job Summary
+        </Text>
+      </View>
+
       {cards.map((card, index) => (
         <TouchableOpacity
           key={index}
@@ -249,6 +262,21 @@ const styles = StyleSheet.create({
   content: {
     padding: 16,
     paddingBottom: 100,
+  },
+  aiLabel: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 12,
+    borderWidth: 1,
+    marginBottom: 16,
+    gap: 6,
+  },
+  aiLabelText: {
+    fontSize: 12,
+    fontWeight: '600',
   },
   card: {
     borderRadius: 16,

@@ -15,51 +15,48 @@ import { useTheme } from '@react-navigation/native';
 import { IconSymbol } from '@/components/IconSymbol';
 import { supabase } from '@/app/integrations/supabase/client';
 
-interface ScopeDocument {
+interface Job {
   id: string;
-  job_id: string;
-  raw_content: string;
-  summary: string;
-  file_name: string | null;
-  created_at: string;
+  job_name: string;
+  job_overview: string | null;
+  last_processed_at: string | null;
+  processing_status: string;
+  open_issues: any[];
+  unanswered_questions: any[];
+  next_actions: any[];
+  warnings_and_risks: any[];
+  dependencies: any[];
 }
 
 export default function JobOverviewScreen() {
   const router = useRouter();
   const theme = useTheme();
   const { jobId } = useLocalSearchParams();
-  const [scopeDoc, setScopeDoc] = useState<ScopeDocument | null>(null);
+  const [job, setJob] = useState<Job | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {
-    loadScopeDocument();
+    loadJobOverview();
   }, [jobId]);
 
-  const loadScopeDocument = async () => {
+  const loadJobOverview = async () => {
     try {
       setLoading(true);
       const { data, error } = await supabase
-        .from('scope_documents')
-        .select('*')
-        .eq('job_id', jobId)
-        .order('created_at', { ascending: false })
-        .limit(1)
+        .from('jobs')
+        .select('id, job_name, job_overview, last_processed_at, processing_status, open_issues, unanswered_questions, next_actions, warnings_and_risks, dependencies')
+        .eq('id', jobId)
         .single();
 
       if (error) {
-        if (error.code === 'PGRST116') {
-          console.log('No scope document found for this job');
-          setScopeDoc(null);
-        } else {
-          console.error('Error loading scope document:', error);
-        }
+        console.error('Error loading job overview:', error);
       } else {
-        console.log('Scope document loaded:', data);
-        setScopeDoc(data);
+        console.log('Job overview loaded:', data);
+        setJob(data);
       }
     } catch (error) {
-      console.error('Exception loading scope document:', error);
+      console.error('Exception loading job overview:', error);
     } finally {
       setLoading(false);
     }
@@ -67,8 +64,30 @@ export default function JobOverviewScreen() {
 
   const handleRefresh = async () => {
     setRefreshing(true);
-    await loadScopeDocument();
+    await loadJobOverview();
     setRefreshing(false);
+  };
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'running':
+        return '#3B82F6';
+      case 'scheduled':
+        return '#F59E0B';
+      default:
+        return '#10B981';
+    }
+  };
+
+  const getStatusText = (status: string) => {
+    switch (status) {
+      case 'running':
+        return 'Processing...';
+      case 'scheduled':
+        return 'Processing scheduled';
+      default:
+        return 'Up to date';
+    }
   };
 
   return (
@@ -96,7 +115,7 @@ export default function JobOverviewScreen() {
           <ActivityIndicator size="large" color={theme.colors.primary} />
           <Text style={[styles.loadingText, { color: theme.colors.text }]}>Loading overview...</Text>
         </View>
-      ) : scopeDoc ? (
+      ) : job ? (
         <ScrollView
           style={styles.scrollView}
           contentContainerStyle={styles.content}
@@ -109,84 +128,136 @@ export default function JobOverviewScreen() {
             />
           }
         >
-          <View style={[styles.card, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}>
-            <View style={styles.iconHeader}>
-              <View style={[styles.iconContainer, { backgroundColor: theme.colors.primary + '20' }]}>
+          {/* Status Badge */}
+          <View style={[styles.statusBadge, { backgroundColor: getStatusColor(job.processing_status) + '20', borderColor: getStatusColor(job.processing_status) }]}>
+            <View style={[styles.statusDot, { backgroundColor: getStatusColor(job.processing_status) }]} />
+            <Text style={[styles.statusText, { color: getStatusColor(job.processing_status) }]}>
+              {getStatusText(job.processing_status)}
+            </Text>
+          </View>
+
+          {/* AI-Generated Overview */}
+          {job.job_overview ? (
+            <View style={[styles.card, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}>
+              <View style={styles.iconHeader}>
+                <View style={[styles.iconContainer, { backgroundColor: theme.colors.primary + '20' }]}>
+                  <IconSymbol
+                    ios_icon_name="sparkles"
+                    android_material_icon_name="auto_awesome"
+                    size={32}
+                    color={theme.colors.primary}
+                  />
+                </View>
+              </View>
+              
+              <View style={[styles.aiLabel, { backgroundColor: theme.colors.primary + '10', borderColor: theme.colors.primary + '30' }]}>
                 <IconSymbol
-                  ios_icon_name="doc.text"
-                  android_material_icon_name="description"
-                  size={32}
+                  ios_icon_name="sparkles"
+                  android_material_icon_name="auto_awesome"
+                  size={14}
                   color={theme.colors.primary}
                 />
-              </View>
-            </View>
-            
-            {scopeDoc.file_name && (
-              <View style={[styles.fileInfo, { backgroundColor: theme.colors.background, borderColor: theme.colors.border }]}>
-                <IconSymbol
-                  ios_icon_name="doc"
-                  android_material_icon_name="description"
-                  size={16}
-                  color={theme.colors.text}
-                  style={{ opacity: 0.6 }}
-                />
-                <Text style={[styles.fileInfoText, { color: theme.colors.text }]}>
-                  Source: {scopeDoc.file_name}
+                <Text style={[styles.aiLabelText, { color: theme.colors.primary }]}>
+                  AI-Generated Summary
                 </Text>
               </View>
-            )}
 
-            <Text style={[styles.overviewText, { color: theme.colors.text }]}>
-              {scopeDoc.summary}
-            </Text>
-
-            <View style={[styles.footer, { borderTopColor: theme.colors.border }]}>
-              <Text style={[styles.footerText, { color: theme.colors.text }]}>
-                Last updated: {new Date(scopeDoc.created_at).toLocaleDateString('en-US', {
-                  year: 'numeric',
-                  month: 'short',
-                  day: 'numeric',
-                  hour: '2-digit',
-                  minute: '2-digit',
-                })}
+              <Text style={[styles.overviewText, { color: theme.colors.text }]}>
+                {job.job_overview}
               </Text>
+
+              {/* Quick Stats */}
+              <View style={[styles.statsContainer, { borderTopColor: theme.colors.border }]}>
+                <View style={styles.statRow}>
+                  <View style={styles.stat}>
+                    <Text style={[styles.statValue, { color: '#F59E0B' }]}>
+                      {job.open_issues?.length || 0}
+                    </Text>
+                    <Text style={[styles.statLabel, { color: theme.colors.text }]}>
+                      Open Issues
+                    </Text>
+                  </View>
+                  <View style={styles.stat}>
+                    <Text style={[styles.statValue, { color: '#3B82F6' }]}>
+                      {job.unanswered_questions?.length || 0}
+                    </Text>
+                    <Text style={[styles.statLabel, { color: theme.colors.text }]}>
+                      Questions
+                    </Text>
+                  </View>
+                  <View style={styles.stat}>
+                    <Text style={[styles.statValue, { color: '#10B981' }]}>
+                      {job.next_actions?.length || 0}
+                    </Text>
+                    <Text style={[styles.statLabel, { color: theme.colors.text }]}>
+                      Actions
+                    </Text>
+                  </View>
+                </View>
+                <View style={styles.statRow}>
+                  <View style={styles.stat}>
+                    <Text style={[styles.statValue, { color: '#EF4444' }]}>
+                      {job.warnings_and_risks?.length || 0}
+                    </Text>
+                    <Text style={[styles.statLabel, { color: theme.colors.text }]}>
+                      Risks
+                    </Text>
+                  </View>
+                  <View style={styles.stat}>
+                    <Text style={[styles.statValue, { color: '#06B6D4' }]}>
+                      {job.dependencies?.length || 0}
+                    </Text>
+                    <Text style={[styles.statLabel, { color: theme.colors.text }]}>
+                      Dependencies
+                    </Text>
+                  </View>
+                  <View style={styles.stat} />
+                </View>
+              </View>
+
+              {job.last_processed_at && (
+                <View style={[styles.footer, { borderTopColor: theme.colors.border }]}>
+                  <Text style={[styles.footerText, { color: theme.colors.text }]}>
+                    Last updated: {new Date(job.last_processed_at).toLocaleDateString('en-US', {
+                      year: 'numeric',
+                      month: 'short',
+                      day: 'numeric',
+                      hour: '2-digit',
+                      minute: '2-digit',
+                    })}
+                  </Text>
+                </View>
+              )}
             </View>
-          </View>
+          ) : (
+            <View style={[styles.card, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}>
+              <View style={styles.emptyContainer}>
+                <View style={[styles.emptyIconContainer, { backgroundColor: theme.colors.primary + '10' }]}>
+                  <IconSymbol
+                    ios_icon_name="sparkles"
+                    android_material_icon_name="auto_awesome"
+                    size={48}
+                    color={theme.colors.text}
+                    style={{ opacity: 0.3 }}
+                  />
+                </View>
+                <Text style={[styles.emptyTitle, { color: theme.colors.text }]}>
+                  No Overview Yet
+                </Text>
+                <Text style={[styles.emptyText, { color: theme.colors.text }]}>
+                  The AI will generate a job overview summary after analyzing chat messages. Start chatting to build the overview!
+                </Text>
+                <Text style={[styles.emptyHint, { color: theme.colors.text }]}>
+                  Pull down to refresh
+                </Text>
+              </View>
+            </View>
+          )}
         </ScrollView>
       ) : (
-        <ScrollView
-          style={styles.scrollView}
-          contentContainerStyle={styles.emptyScrollContent}
-          showsVerticalScrollIndicator={false}
-          refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={handleRefresh}
-              tintColor={theme.colors.primary}
-            />
-          }
-        >
-          <View style={styles.emptyContainer}>
-            <View style={[styles.emptyIconContainer, { backgroundColor: theme.colors.primary + '10' }]}>
-              <IconSymbol
-                ios_icon_name="doc.text.magnifyingglass"
-                android_material_icon_name="description"
-                size={48}
-                color={theme.colors.text}
-                style={{ opacity: 0.3 }}
-              />
-            </View>
-            <Text style={[styles.emptyTitle, { color: theme.colors.text }]}>
-              No Scope Document
-            </Text>
-            <Text style={[styles.emptyText, { color: theme.colors.text }]}>
-              No scope document has been uploaded for this job yet. An admin can add a scope document from the job menu.
-            </Text>
-            <Text style={[styles.emptyHint, { color: theme.colors.text }]}>
-              Pull down to refresh
-            </Text>
-          </View>
-        </ScrollView>
+        <View style={styles.loadingContainer}>
+          <Text style={[styles.loadingText, { color: theme.colors.text }]}>Job not found</Text>
+        </View>
       )}
     </View>
   );
@@ -236,6 +307,26 @@ const styles = StyleSheet.create({
     padding: 16,
     paddingBottom: 100,
   },
+  statusBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 20,
+    borderWidth: 1,
+    marginBottom: 16,
+    gap: 8,
+  },
+  statusDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  statusText: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
   card: {
     borderRadius: 16,
     padding: 20,
@@ -245,7 +336,7 @@ const styles = StyleSheet.create({
   },
   iconHeader: {
     alignItems: 'center',
-    marginBottom: 20,
+    marginBottom: 16,
   },
   iconContainer: {
     width: 64,
@@ -254,24 +345,48 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  fileInfo: {
+  aiLabel: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 8,
+    alignSelf: 'flex-start',
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 12,
     borderWidth: 1,
     marginBottom: 16,
+    gap: 6,
   },
-  fileInfoText: {
-    fontSize: 13,
-    fontWeight: '500',
-    opacity: 0.7,
+  aiLabelText: {
+    fontSize: 12,
+    fontWeight: '600',
   },
   overviewText: {
     fontSize: 15,
     lineHeight: 24,
+  },
+  statsContainer: {
+    marginTop: 20,
+    paddingTop: 20,
+    borderTopWidth: 1,
+    gap: 12,
+  },
+  statRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+  },
+  stat: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  statValue: {
+    fontSize: 24,
+    fontWeight: '700',
+    marginBottom: 4,
+  },
+  statLabel: {
+    fontSize: 12,
+    opacity: 0.6,
+    textAlign: 'center',
   },
   footer: {
     marginTop: 20,
@@ -283,16 +398,10 @@ const styles = StyleSheet.create({
     opacity: 0.6,
     textAlign: 'center',
   },
-  emptyScrollContent: {
-    flexGrow: 1,
-  },
   emptyContainer: {
-    flex: 1,
-    justifyContent: 'center',
     alignItems: 'center',
-    paddingHorizontal: 40,
+    paddingVertical: 40,
     gap: 16,
-    minHeight: 400,
   },
   emptyIconContainer: {
     width: 96,
@@ -311,6 +420,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     opacity: 0.6,
     lineHeight: 22,
+    paddingHorizontal: 20,
   },
   emptyHint: {
     fontSize: 13,
