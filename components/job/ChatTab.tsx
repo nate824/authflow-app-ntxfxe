@@ -421,8 +421,6 @@ export default function ChatTab({ jobId }: ChatTabProps) {
                               color: isCurrentUser ? '#FFFFFF' : theme.colors.text,
                             },
                           ]}
-                          numberOfLines={undefined}
-                          ellipsizeMode="tail"
                         >
                           {messageText}
                         </Text>
