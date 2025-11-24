@@ -11,6 +11,8 @@ import {
   ActivityIndicator,
   Alert,
   Platform,
+  KeyboardAvoidingView,
+  Dimensions,
 } from 'react-native';
 import { useTheme } from '@react-navigation/native';
 import * as DocumentPicker from 'expo-document-picker';
@@ -25,6 +27,8 @@ interface ScopeUploadModalProps {
   onClose: () => void;
   onSuccess: () => void;
 }
+
+const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 export default function ScopeUploadModal({
   visible,
@@ -190,161 +194,189 @@ export default function ScopeUploadModal({
       transparent
       animationType="slide"
       onRequestClose={handleClose}
+      statusBarTranslucent
     >
-      <View style={styles.modalOverlay}>
-        <View style={[styles.container, { backgroundColor: theme.colors.card }]}>
-          {/* Header */}
-          <View style={styles.header}>
-            <Text style={[styles.title, { color: theme.colors.text }]}>Add Scope Document</Text>
-            <TouchableOpacity
-              style={styles.closeButton}
-              onPress={handleClose}
-              disabled={loading}
-            >
-              <IconSymbol
-                ios_icon_name="xmark"
-                android_material_icon_name="close"
-                size={24}
-                color={theme.colors.text}
-              />
-            </TouchableOpacity>
-          </View>
-
-          <Text style={[styles.subtitle, { color: theme.colors.text }]}>
-            {jobName}
-          </Text>
-
-          {/* Action Buttons */}
-          <View style={styles.actionButtons}>
-            <TouchableOpacity
-              style={[styles.actionButton, { backgroundColor: theme.colors.background, borderColor: theme.colors.border }]}
-              onPress={handlePickDocument}
-              disabled={loading}
-            >
-              <IconSymbol
-                ios_icon_name="doc.badge.plus"
-                android_material_icon_name="attach_file"
-                size={20}
-                color={theme.colors.primary}
-              />
-              <Text style={[styles.actionButtonText, { color: theme.colors.text }]}>
-                Attach File
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.actionButton, { backgroundColor: theme.colors.background, borderColor: theme.colors.border }]}
-              onPress={handleVoiceInput}
-              disabled={loading}
-            >
-              <IconSymbol
-                ios_icon_name={isListening ? 'mic.fill' : 'mic'}
-                android_material_icon_name="mic"
-                size={20}
-                color={isListening ? '#EF4444' : theme.colors.primary}
-              />
-              <Text style={[styles.actionButtonText, { color: theme.colors.text }]}>
-                {isListening ? 'Listening...' : 'Voice Input'}
-              </Text>
-            </TouchableOpacity>
-          </View>
-
-          {/* File Info */}
-          {fileName && (
-            <View style={[styles.fileInfo, { backgroundColor: theme.colors.background, borderColor: theme.colors.border }]}>
-              <IconSymbol
-                ios_icon_name="doc"
-                android_material_icon_name="description"
-                size={16}
-                color={theme.colors.text}
-              />
-              <Text style={[styles.fileInfoText, { color: theme.colors.text }]} numberOfLines={1}>
-                {fileName}
-              </Text>
-              <TouchableOpacity
-                onPress={() => {
-                  setFileName('');
-                  setFileType('');
-                  setFileUri('');
-                }}
-                disabled={loading}
-              >
-                <IconSymbol
-                  ios_icon_name="xmark.circle.fill"
-                  android_material_icon_name="cancel"
-                  size={20}
-                  color={theme.colors.text}
-                  style={{ opacity: 0.5 }}
-                />
-              </TouchableOpacity>
-            </View>
-          )}
-
-          {/* Text Input */}
-          <ScrollView
-            style={styles.scrollView}
-            contentContainerStyle={styles.scrollContent}
-            showsVerticalScrollIndicator={false}
+      <KeyboardAvoidingView
+        style={styles.keyboardAvoidingView}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
+      >
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={handleClose}
+        >
+          <TouchableOpacity
+            activeOpacity={1}
+            onPress={(e) => e.stopPropagation()}
+            style={styles.modalContentWrapper}
           >
-            <TextInput
-              style={[
-                styles.textInput,
-                {
-                  backgroundColor: theme.colors.background,
-                  color: theme.colors.text,
-                  borderColor: theme.colors.border,
-                },
-              ]}
-              placeholder="Type or paste the scope document content here...&#10;&#10;You can also attach a document above and paste its content here."
-              placeholderTextColor={theme.colors.text + '80'}
-              value={content}
-              onChangeText={setContent}
-              multiline
-              textAlignVertical="top"
-              editable={!loading}
-            />
-          </ScrollView>
-
-          {/* Submit Button */}
-          <View style={styles.footer}>
-            <TouchableOpacity
-              style={[
-                styles.submitButton,
-                { backgroundColor: theme.colors.primary },
-                loading && { opacity: 0.6 },
-              ]}
-              onPress={handleSubmit}
-              disabled={loading || !content.trim()}
-            >
-              {loading ? (
-                <React.Fragment>
-                  <ActivityIndicator color="#fff" />
-                  <Text style={styles.submitButtonText}>Processing...</Text>
-                </React.Fragment>
-              ) : (
-                <React.Fragment>
+            <View style={[styles.container, { backgroundColor: theme.colors.card }]}>
+              {/* Header */}
+              <View style={styles.header}>
+                <Text style={[styles.title, { color: theme.colors.text }]}>Add Scope Document</Text>
+                <TouchableOpacity
+                  style={styles.closeButton}
+                  onPress={handleClose}
+                  disabled={loading}
+                >
                   <IconSymbol
-                    ios_icon_name="arrow.up.circle.fill"
-                    android_material_icon_name="send"
-                    size={20}
-                    color="#fff"
+                    ios_icon_name="xmark"
+                    android_material_icon_name="close"
+                    size={24}
+                    color={theme.colors.text}
                   />
-                  <Text style={styles.submitButtonText}>Process Scope Document</Text>
-                </React.Fragment>
-              )}
-            </TouchableOpacity>
-          </View>
-        </View>
-      </View>
+                </TouchableOpacity>
+              </View>
+
+              <Text style={[styles.subtitle, { color: theme.colors.text }]}>
+                {jobName}
+              </Text>
+
+              {/* Action Buttons */}
+              <View style={styles.actionButtons}>
+                <TouchableOpacity
+                  style={[styles.actionButton, { backgroundColor: theme.colors.background, borderColor: theme.colors.border }]}
+                  onPress={handlePickDocument}
+                  disabled={loading}
+                  activeOpacity={0.7}
+                >
+                  <IconSymbol
+                    ios_icon_name="doc.badge.plus"
+                    android_material_icon_name="attach_file"
+                    size={20}
+                    color={theme.colors.primary}
+                  />
+                  <Text style={[styles.actionButtonText, { color: theme.colors.text }]}>
+                    Attach File
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.actionButton, { backgroundColor: theme.colors.background, borderColor: theme.colors.border }]}
+                  onPress={handleVoiceInput}
+                  disabled={loading}
+                  activeOpacity={0.7}
+                >
+                  <IconSymbol
+                    ios_icon_name={isListening ? 'mic.fill' : 'mic'}
+                    android_material_icon_name="mic"
+                    size={20}
+                    color={isListening ? '#EF4444' : theme.colors.primary}
+                  />
+                  <Text style={[styles.actionButtonText, { color: theme.colors.text }]}>
+                    {isListening ? 'Listening...' : 'Voice Input'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+
+              {/* File Info */}
+              {fileName ? (
+                <View style={[styles.fileInfo, { backgroundColor: theme.colors.background, borderColor: theme.colors.border }]}>
+                  <IconSymbol
+                    ios_icon_name="doc"
+                    android_material_icon_name="description"
+                    size={16}
+                    color={theme.colors.text}
+                  />
+                  <Text style={[styles.fileInfoText, { color: theme.colors.text }]} numberOfLines={1}>
+                    {fileName}
+                  </Text>
+                  <TouchableOpacity
+                    onPress={() => {
+                      setFileName('');
+                      setFileType('');
+                      setFileUri('');
+                    }}
+                    disabled={loading}
+                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                  >
+                    <IconSymbol
+                      ios_icon_name="xmark.circle.fill"
+                      android_material_icon_name="cancel"
+                      size={20}
+                      color={theme.colors.text}
+                      style={{ opacity: 0.5 }}
+                    />
+                  </TouchableOpacity>
+                </View>
+              ) : null}
+
+              {/* Text Input */}
+              <View style={styles.textInputContainer}>
+                <TextInput
+                  style={[
+                    styles.textInput,
+                    {
+                      backgroundColor: theme.colors.background,
+                      color: theme.colors.text,
+                      borderColor: theme.colors.border,
+                    },
+                  ]}
+                  placeholder="Type or paste the scope document content here...&#10;&#10;You can also attach a document above and paste its content here."
+                  placeholderTextColor={theme.colors.text + '80'}
+                  value={content}
+                  onChangeText={setContent}
+                  multiline
+                  textAlignVertical="top"
+                  editable={!loading}
+                  numberOfLines={10}
+                  scrollEnabled={true}
+                  underlineColorAndroid="transparent"
+                  autoCorrect={false}
+                  autoCapitalize="sentences"
+                />
+              </View>
+
+              {/* Submit Button */}
+              <View style={styles.footer}>
+                <TouchableOpacity
+                  style={[
+                    styles.submitButton,
+                    { backgroundColor: theme.colors.primary },
+                    (loading || !content.trim()) && { opacity: 0.5 },
+                  ]}
+                  onPress={handleSubmit}
+                  disabled={loading || !content.trim()}
+                  activeOpacity={0.7}
+                >
+                  {loading ? (
+                    <React.Fragment>
+                      <ActivityIndicator color="#fff" size="small" />
+                      <Text style={styles.submitButtonText}>Processing...</Text>
+                    </React.Fragment>
+                  ) : (
+                    <React.Fragment>
+                      <IconSymbol
+                        ios_icon_name="arrow.up.circle.fill"
+                        android_material_icon_name="send"
+                        size={20}
+                        color="#fff"
+                      />
+                      <Text style={styles.submitButtonText}>Process Scope Document</Text>
+                    </React.Fragment>
+                  )}
+                </TouchableOpacity>
+              </View>
+            </View>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }
 
 const styles = StyleSheet.create({
+  keyboardAvoidingView: {
+    flex: 1,
+  },
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
     justifyContent: 'flex-end',
+  },
+  modalContentWrapper: {
+    maxHeight: SCREEN_HEIGHT * 0.9,
   },
   container: {
     borderTopLeftRadius: 24,
@@ -352,9 +384,18 @@ const styles = StyleSheet.create({
     paddingTop: 20,
     paddingHorizontal: 20,
     paddingBottom: Platform.OS === 'ios' ? 40 : 20,
-    maxHeight: '90%',
-    boxShadow: '0px -4px 16px rgba(0, 0, 0, 0.2)',
-    elevation: 8,
+    minHeight: SCREEN_HEIGHT * 0.7,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: -4 },
+        shadowOpacity: 0.2,
+        shadowRadius: 16,
+      },
+      android: {
+        elevation: 8,
+      },
+    }),
   },
   header: {
     flexDirection: 'row',
@@ -371,6 +412,7 @@ const styles = StyleSheet.create({
     height: 40,
     justifyContent: 'center',
     alignItems: 'center',
+    borderRadius: 20,
   },
   subtitle: {
     fontSize: 14,
@@ -388,10 +430,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    paddingVertical: 12,
+    paddingVertical: 14,
     paddingHorizontal: 16,
     borderRadius: 12,
-    borderWidth: 1,
+    borderWidth: 1.5,
+    minHeight: 48,
   },
   actionButtonText: {
     fontSize: 14,
@@ -412,23 +455,28 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '500',
   },
-  scrollView: {
+  textInputContainer: {
     flex: 1,
     marginBottom: 16,
-  },
-  scrollContent: {
-    flexGrow: 1,
+    minHeight: 200,
   },
   textInput: {
-    minHeight: 200,
-    borderWidth: 1,
+    flex: 1,
+    borderWidth: 1.5,
     borderRadius: 12,
     padding: 16,
     fontSize: 15,
     lineHeight: 22,
+    minHeight: 200,
+    ...Platform.select({
+      android: {
+        textAlignVertical: 'top',
+      },
+    }),
   },
   footer: {
     paddingTop: 16,
+    paddingBottom: Platform.OS === 'android' ? 8 : 0,
   },
   submitButton: {
     flexDirection: 'row',
@@ -437,6 +485,7 @@ const styles = StyleSheet.create({
     gap: 8,
     paddingVertical: 16,
     borderRadius: 12,
+    minHeight: 56,
   },
   submitButtonText: {
     color: '#fff',

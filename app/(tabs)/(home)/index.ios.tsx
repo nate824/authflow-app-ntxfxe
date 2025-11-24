@@ -15,6 +15,7 @@ import { useTheme } from '@react-navigation/native';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/app/integrations/supabase/client';
 import { IconSymbol } from '@/components/IconSymbol.ios';
+import ScopeUploadModal from '@/components/job/ScopeUploadModal';
 
 interface UserProfile {
   id: string;
@@ -51,6 +52,7 @@ export default function HomeScreen() {
   const [showEditModal, setShowEditModal] = useState(false);
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showScopeModal, setShowScopeModal] = useState(false);
   const [allUsers, setAllUsers] = useState<User[]>([]);
   const [selectedUsers, setSelectedUsers] = useState<string[]>([]);
   
@@ -217,6 +219,16 @@ export default function HomeScreen() {
     loadAllUsers();
     setSelectedUsers([]);
     setShowInviteModal(true);
+  };
+
+  const handleUploadScope = () => {
+    setShowMenu(false);
+    setShowScopeModal(true);
+  };
+
+  const handleScopeUploadSuccess = () => {
+    console.log('Scope uploaded successfully');
+    loadJobs();
   };
 
   const toggleUserSelection = (userId: string) => {
@@ -467,10 +479,7 @@ export default function HomeScreen() {
             </TouchableOpacity>
             <TouchableOpacity
               style={styles.menuItem}
-              onPress={() => {
-                setShowMenu(false);
-                Alert.alert('Upload Scope', 'This feature will be implemented in the next step');
-              }}
+              onPress={handleUploadScope}
             >
               <IconSymbol
                 ios_icon_name="doc.badge.plus"
@@ -478,7 +487,7 @@ export default function HomeScreen() {
                 size={20}
                 color={theme.colors.text}
               />
-              <Text style={[styles.menuItemText, { color: theme.colors.text }]}>Upload Initial Scope</Text>
+              <Text style={[styles.menuItemText, { color: theme.colors.text }]}>Add Scope</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.menuItem, styles.menuItemDanger]}
@@ -680,6 +689,20 @@ export default function HomeScreen() {
           </View>
         </View>
       </Modal>
+
+      {/* Scope Upload Modal */}
+      {selectedJob && (
+        <ScopeUploadModal
+          visible={showScopeModal}
+          jobId={selectedJob.id}
+          jobName={selectedJob.job_name}
+          onClose={() => {
+            setShowScopeModal(false);
+            setSelectedJob(null);
+          }}
+          onSuccess={handleScopeUploadSuccess}
+        />
+      )}
     </View>
   );
 }
