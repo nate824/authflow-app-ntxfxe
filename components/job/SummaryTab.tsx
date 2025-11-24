@@ -109,9 +109,14 @@ export default function SummaryTab({ jobId }: SummaryTabProps) {
     },
   ];
 
-  const handleCardPress = (route: string) => {
-    console.log('Navigating to:', route);
-    router.push(route as any);
+  const handleCardPress = (card: SummaryCard) => {
+    console.log('Card pressed:', card.title);
+    console.log('Navigating to:', card.route);
+    try {
+      router.push(card.route as any);
+    } catch (error) {
+      console.error('Navigation error:', error);
+    }
   };
 
   return (
@@ -124,7 +129,7 @@ export default function SummaryTab({ jobId }: SummaryTabProps) {
         <TouchableOpacity
           key={index}
           style={[styles.card, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}
-          onPress={() => handleCardPress(card.route)}
+          onPress={() => handleCardPress(card)}
           activeOpacity={0.7}
         >
           <View style={styles.cardContent}>
