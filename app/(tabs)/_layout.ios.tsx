@@ -1,35 +1,17 @@
 
 import React from 'react';
-import { Tabs } from 'expo-router/unstable-native-tabs';
-import { IconSymbol } from '@/components/IconSymbol';
-import { colors } from '@/styles/commonStyles';
+import { Stack } from 'expo-router';
 
 export default function TabLayout() {
+  // No tabs - just stack navigation
   return (
-    <Tabs
+    <Stack
       screenOptions={{
         headerShown: false,
-        tabBarActiveTintColor: colors.primary,
-        tabBarInactiveTintColor: colors.textSecondary,
-        tabBarStyle: {
-          backgroundColor: colors.card,
-        },
+        animation: 'none',
       }}
     >
-      <Tabs.Screen
-        name="(home)"
-        options={{
-          title: 'Home',
-          tabBarIcon: ({ color }) => (
-            <IconSymbol
-              ios_icon_name="house.fill"
-              android_material_icon_name="home"
-              size={24}
-              color={color}
-            />
-          ),
-        }}
-      />
-    </Tabs>
+      <Stack.Screen key="home" name="(home)" />
+    </Stack>
   );
 }
