@@ -18,6 +18,7 @@ import { supabase } from '@/app/integrations/supabase/client';
 import { RealtimeChannel } from '@supabase/supabase-js';
 
 interface UserProfile {
+  user_id: string;
   display_name: string | null;
   avatar_url: string | null;
 }
@@ -29,7 +30,7 @@ interface Message {
   created_at: string;
   message_type: 'text' | 'image' | 'voice';
   image_url?: string;
-  user_profiles?: UserProfile;
+  userProfile?: UserProfile;
 }
 
 interface ChatTabProps {
@@ -93,27 +94,67 @@ export default function ChatTab({ jobId }: ChatTabProps) {
   const fetchMessages = async () => {
     try {
       setLoading(true);
-      const { data, error } = await supabase
+      
+      // Step 1: Fetch chat messages
+      const { data: messagesData, error: messagesError } = await supabase
         .from('chat_messages')
-        .select(`
-          *,
-          user_profiles!chat_messages_user_id_fkey(display_name, avatar_url)
-        `)
+        .select('id, message_text, user_id, created_at, message_type, image_url')
         .eq('job_id', jobId)
         .order('created_at', { ascending: true });
 
-      if (error) {
-        console.error('Error fetching messages:', error);
-      } else {
-        console.log('Fetched messages:', data?.length || 0);
-        setMessages(data || []);
-        // Scroll to bottom after messages load
-        setTimeout(() => {
-          scrollViewRef.current?.scrollToEnd({ animated: false });
-        }, 100);
+      if (messagesError) {
+        console.error('Error fetching messages:', messagesError);
+        setMessages([]);
+        return;
       }
+
+      if (!messagesData || messagesData.length === 0) {
+        console.log('No messages found for job:', jobId);
+        setMessages([]);
+        return;
+      }
+
+      console.log('Fetched messages:', messagesData.length);
+
+      // Step 2: Get unique user IDs from messages
+      const userIds = [...new Set(messagesData.map(msg => msg.user_id))];
+      console.log('Fetching profiles for user IDs:', userIds);
+
+      // Step 3: Fetch user profiles for those user IDs
+      const { data: profilesData, error: profilesError } = await supabase
+        .from('user_profiles')
+        .select('user_id, display_name, avatar_url')
+        .in('user_id', userIds);
+
+      if (profilesError) {
+        console.error('Error fetching user profiles:', profilesError);
+        // Continue without profiles - we'll use fallback display
+      }
+
+      console.log('Fetched profiles:', profilesData?.length || 0);
+
+      // Step 4: Map profiles to messages
+      const messagesWithProfiles = messagesData.map(msg => {
+        const userProfile = profilesData?.find(profile => profile.user_id === msg.user_id);
+        return {
+          ...msg,
+          userProfile: userProfile || {
+            user_id: msg.user_id,
+            display_name: null,
+            avatar_url: null,
+          },
+        };
+      });
+
+      setMessages(messagesWithProfiles);
+      
+      // Scroll to bottom after messages load
+      setTimeout(() => {
+        scrollViewRef.current?.scrollToEnd({ animated: false });
+      }, 100);
     } catch (error) {
-      console.error('Error fetching messages:', error);
+      console.error('Error in fetchMessages:', error);
+      setMessages([]);
     } finally {
       setLoading(false);
     }
@@ -233,8 +274,8 @@ export default function ChatTab({ jobId }: ChatTabProps) {
         ) : (
           messages.map((msg, index) => {
             const isCurrentUser = msg.user_id === currentUserId;
-            const displayName = msg.user_profiles?.display_name || 'User';
-            const initials = getUserInitials(msg.user_profiles?.display_name, msg.user_id);
+            const displayName = msg.userProfile?.display_name || 'User';
+            const initials = getUserInitials(msg.userProfile?.display_name, msg.user_id);
             const avatarColor = getAvatarColor(msg.user_id);
 
             return (
