@@ -28,11 +28,19 @@ interface Job {
   dependencies: any[];
 }
 
+interface ScopeDocument {
+  id: string;
+  summary: string;
+  file_name: string | null;
+  created_at: string;
+}
+
 export default function JobOverviewScreen() {
   const router = useRouter();
   const theme = useTheme();
   const { jobId } = useLocalSearchParams();
   const [job, setJob] = useState<Job | null>(null);
+  const [scopeDocument, setScopeDocument] = useState<ScopeDocument | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -43,17 +51,38 @@ export default function JobOverviewScreen() {
   const loadJobOverview = async () => {
     try {
       setLoading(true);
-      const { data, error } = await supabase
+      
+      // Load job data
+      const { data: jobData, error: jobError } = await supabase
         .from('jobs')
         .select('id, job_name, job_overview, last_processed_at, processing_status, open_issues, unanswered_questions, next_actions, warnings_and_risks, dependencies')
         .eq('id', jobId)
         .single();
 
-      if (error) {
-        console.error('Error loading job overview:', error);
+      if (jobError) {
+        console.error('Error loading job overview:', jobError);
       } else {
-        console.log('Job overview loaded:', data);
-        setJob(data);
+        console.log('Job overview loaded:', jobData);
+        setJob(jobData);
+
+        // If job_overview is empty, try to load the most recent scope document
+        if (!jobData.job_overview || jobData.job_overview.trim() === '') {
+          console.log('Job overview is empty, loading scope document...');
+          const { data: scopeData, error: scopeError } = await supabase
+            .from('scope_documents')
+            .select('id, summary, file_name, created_at')
+            .eq('job_id', jobId)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .single();
+
+          if (scopeError) {
+            console.error('Error loading scope document:', scopeError);
+          } else if (scopeData) {
+            console.log('Scope document loaded:', scopeData);
+            setScopeDocument(scopeData);
+          }
+        }
       }
     } catch (error) {
       console.error('Exception loading job overview:', error);
@@ -74,6 +103,10 @@ export default function JobOverviewScreen() {
         return '#3B82F6';
       case 'scheduled':
         return '#F59E0B';
+      case 'completed':
+        return '#10B981';
+      case 'failed':
+        return '#EF4444';
       default:
         return '#10B981';
     }
@@ -85,10 +118,18 @@ export default function JobOverviewScreen() {
         return 'Processing...';
       case 'scheduled':
         return 'Processing scheduled';
+      case 'completed':
+        return 'Recently updated';
+      case 'failed':
+        return 'Processing failed';
       default:
         return 'Up to date';
     }
   };
+
+  // Determine which overview to display
+  const overviewText = job?.job_overview || scopeDocument?.summary || null;
+  const overviewSource = job?.job_overview ? 'job' : scopeDocument ? 'scope' : null;
 
   return (
     <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
@@ -129,15 +170,17 @@ export default function JobOverviewScreen() {
           }
         >
           {/* Status Badge */}
-          <View style={[styles.statusBadge, { backgroundColor: getStatusColor(job.processing_status) + '20', borderColor: getStatusColor(job.processing_status) }]}>
-            <View style={[styles.statusDot, { backgroundColor: getStatusColor(job.processing_status) }]} />
-            <Text style={[styles.statusText, { color: getStatusColor(job.processing_status) }]}>
-              {getStatusText(job.processing_status)}
-            </Text>
-          </View>
+          {job.processing_status !== 'idle' && (
+            <View style={[styles.statusBadge, { backgroundColor: getStatusColor(job.processing_status) + '20', borderColor: getStatusColor(job.processing_status) }]}>
+              <View style={[styles.statusDot, { backgroundColor: getStatusColor(job.processing_status) }]} />
+              <Text style={[styles.statusText, { color: getStatusColor(job.processing_status) }]}>
+                {getStatusText(job.processing_status)}
+              </Text>
+            </View>
+          )}
 
           {/* AI-Generated Overview */}
-          {job.job_overview ? (
+          {overviewText ? (
             <View style={[styles.card, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}>
               <View style={styles.iconHeader}>
                 <View style={[styles.iconContainer, { backgroundColor: theme.colors.primary + '20' }]}>
@@ -158,12 +201,12 @@ export default function JobOverviewScreen() {
                   color={theme.colors.primary}
                 />
                 <Text style={[styles.aiLabelText, { color: theme.colors.primary }]}>
-                  AI-Generated Summary
+                  {overviewSource === 'scope' ? 'Scope Document Summary' : 'AI-Generated Summary'}
                 </Text>
               </View>
 
               <Text style={[styles.overviewText, { color: theme.colors.text }]}>
-                {job.job_overview}
+                {overviewText}
               </Text>
 
               {/* Quick Stats */}
@@ -215,8 +258,24 @@ export default function JobOverviewScreen() {
                 </View>
               </View>
 
-              {job.last_processed_at && (
-                <View style={[styles.footer, { borderTopColor: theme.colors.border }]}>
+              {/* Footer with timestamp */}
+              <View style={[styles.footer, { borderTopColor: theme.colors.border }]}>
+                {overviewSource === 'scope' && scopeDocument ? (
+                  <React.Fragment>
+                    <Text style={[styles.footerText, { color: theme.colors.text }]}>
+                      From scope document: {scopeDocument.file_name || 'Manual entry'}
+                    </Text>
+                    <Text style={[styles.footerText, { color: theme.colors.text, marginTop: 4 }]}>
+                      Uploaded: {new Date(scopeDocument.created_at).toLocaleDateString('en-US', {
+                        year: 'numeric',
+                        month: 'short',
+                        day: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      })}
+                    </Text>
+                  </React.Fragment>
+                ) : job.last_processed_at ? (
                   <Text style={[styles.footerText, { color: theme.colors.text }]}>
                     Last updated: {new Date(job.last_processed_at).toLocaleDateString('en-US', {
                       year: 'numeric',
@@ -226,16 +285,16 @@ export default function JobOverviewScreen() {
                       minute: '2-digit',
                     })}
                   </Text>
-                </View>
-              )}
+                ) : null}
+              </View>
             </View>
           ) : (
             <View style={[styles.card, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}>
               <View style={styles.emptyContainer}>
                 <View style={[styles.emptyIconContainer, { backgroundColor: theme.colors.primary + '10' }]}>
                   <IconSymbol
-                    ios_icon_name="sparkles"
-                    android_material_icon_name="auto_awesome"
+                    ios_icon_name="doc.text"
+                    android_material_icon_name="description"
                     size={48}
                     color={theme.colors.text}
                     style={{ opacity: 0.3 }}
@@ -245,7 +304,7 @@ export default function JobOverviewScreen() {
                   No Overview Yet
                 </Text>
                 <Text style={[styles.emptyText, { color: theme.colors.text }]}>
-                  The AI will generate a job overview summary after analyzing chat messages. Start chatting to build the overview!
+                  Upload a scope document to get started. Long press on the job card and select &quot;Add Scope Document&quot; to begin.
                 </Text>
                 <Text style={[styles.emptyHint, { color: theme.colors.text }]}>
                   Pull down to refresh

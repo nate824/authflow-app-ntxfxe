@@ -38,10 +38,17 @@ interface Job {
   deadlines_and_timelines: any[];
   dependencies: any[];
   ai_changelog: any[];
-  processing_status: 'idle' | 'scheduled' | 'running' | 'failed';
+  processing_status: 'idle' | 'scheduled' | 'running' | 'failed' | 'completed';
   processing_scheduled_for: string | null;
   last_processed_at: string | null;
   job_overview: string | null;
+}
+
+interface ScopeDocument {
+  id: string;
+  summary: string;
+  file_name: string | null;
+  created_at: string;
 }
 
 export default function SummaryTab({ jobId }: SummaryTabProps) {
@@ -51,6 +58,7 @@ export default function SummaryTab({ jobId }: SummaryTabProps) {
   const [refreshing, setRefreshing] = useState(false);
   const [processingManually, setProcessingManually] = useState(false);
   const [job, setJob] = useState<Job | null>(null);
+  const [scopeDocument, setScopeDocument] = useState<ScopeDocument | null>(null);
 
   useEffect(() => {
     fetchJobData();
@@ -84,6 +92,21 @@ export default function SummaryTab({ jobId }: SummaryTabProps) {
           processing_status: data.processing_status,
         });
         setJob(data);
+
+        // If job_overview is empty, check for scope document
+        if (!data.job_overview || data.job_overview.trim() === '') {
+          const { data: scopeData } = await supabase
+            .from('scope_documents')
+            .select('id, summary, file_name, created_at')
+            .eq('job_id', jobId)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .single();
+
+          if (scopeData) {
+            setScopeDocument(scopeData);
+          }
+        }
       }
     } catch (error) {
       console.error('Error fetching job data:', error);
@@ -193,6 +216,22 @@ export default function SummaryTab({ jobId }: SummaryTabProps) {
       );
     }
 
+    if (processing_status === 'completed') {
+      return (
+        <View style={[styles.statusBadge, { backgroundColor: '#10B98120', borderColor: '#10B981' }]}>
+          <IconSymbol
+            ios_icon_name="checkmark.circle"
+            android_material_icon_name="check_circle"
+            size={14}
+            color="#10B981"
+          />
+          <Text style={[styles.statusBadgeText, { color: '#10B981' }]}>
+            Recently processed
+          </Text>
+        </View>
+      );
+    }
+
     if (last_processed_at) {
       const processedTime = new Date(last_processed_at);
       const now = new Date();
@@ -219,6 +258,23 @@ export default function SummaryTab({ jobId }: SummaryTabProps) {
           />
           <Text style={[styles.statusBadgeText, { color: '#10B981' }]}>
             Last updated {timeText}
+          </Text>
+        </View>
+      );
+    }
+
+    // Show scope document status if available
+    if (scopeDocument) {
+      return (
+        <View style={[styles.statusBadge, { backgroundColor: '#3B82F620', borderColor: '#3B82F6' }]}>
+          <IconSymbol
+            ios_icon_name="doc.text"
+            android_material_icon_name="description"
+            size={14}
+            color="#3B82F6"
+          />
+          <Text style={[styles.statusBadgeText, { color: '#3B82F6' }]}>
+            Scope document uploaded
           </Text>
         </View>
       );
@@ -327,6 +383,8 @@ export default function SummaryTab({ jobId }: SummaryTabProps) {
     );
   }
 
+  const hasOverview = job?.job_overview || scopeDocument;
+
   return (
     <ScrollView
       style={styles.container}
@@ -379,18 +437,17 @@ export default function SummaryTab({ jobId }: SummaryTabProps) {
         </TouchableOpacity>
       )}
 
-      {/* Debug Info (only show if no overview) */}
-      {!job?.job_overview && (
-        <View style={[styles.debugCard, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}>
-          <Text style={[styles.debugTitle, { color: theme.colors.text }]}>Debug Info</Text>
-          <Text style={[styles.debugText, { color: theme.colors.text }]}>
-            Status: {job?.processing_status || 'unknown'}
-          </Text>
-          <Text style={[styles.debugText, { color: theme.colors.text }]}>
-            Last processed: {job?.last_processed_at ? new Date(job.last_processed_at).toLocaleString() : 'Never'}
-          </Text>
-          <Text style={[styles.debugText, { color: theme.colors.text }]}>
-            Overview: {job?.job_overview === null ? 'null' : job?.job_overview === '' ? 'empty string' : 'has content'}
+      {/* Info message if no overview */}
+      {!hasOverview && (
+        <View style={[styles.infoCard, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}>
+          <IconSymbol
+            ios_icon_name="info.circle"
+            android_material_icon_name="info"
+            size={20}
+            color={theme.colors.primary}
+          />
+          <Text style={[styles.infoText, { color: theme.colors.text }]}>
+            Upload a scope document to get started. Long press on the job card and select &quot;Add Scope Document&quot;.
           </Text>
         </View>
       )}
@@ -492,21 +549,19 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '600',
   },
-  debugCard: {
+  infoCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
     borderRadius: 12,
     padding: 12,
     marginBottom: 16,
     borderWidth: 1,
+    gap: 12,
   },
-  debugTitle: {
-    fontSize: 14,
-    fontWeight: '700',
-    marginBottom: 8,
-  },
-  debugText: {
-    fontSize: 12,
-    opacity: 0.7,
-    marginBottom: 4,
+  infoText: {
+    flex: 1,
+    fontSize: 13,
+    lineHeight: 18,
   },
   card: {
     borderRadius: 16,
