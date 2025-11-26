@@ -4,11 +4,9 @@ import {
   View,
   Text,
   StyleSheet,
-  ScrollView,
   TextInput,
   TouchableOpacity,
   ActivityIndicator,
-  KeyboardAvoidingView,
   Platform,
 } from 'react-native';
 import { useTheme } from '@react-navigation/native';
@@ -16,6 +14,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { IconSymbol } from '@/components/IconSymbol';
 import { supabase } from '@/app/integrations/supabase/client';
 import { RealtimeChannel } from '@supabase/supabase-js';
+import { Keyboard } from 'react-native';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 
 interface UserProfile {
   user_id: string;
@@ -31,17 +31,141 @@ interface Message {
   message_type: 'text' | 'image' | 'voice';
   image_url?: string;
   userProfile?: UserProfile;
-  isOptimistic?: boolean; // Flag for optimistic messages
+  isOptimistic?: boolean;
 }
 
 interface ChatTabProps {
   jobId: string;
 }
 
+// Separate component for message text to isolate Android rendering
+function MessageTextContent({ 
+  text, 
+  isCurrentUser 
+}: { 
+  text: string; 
+  isCurrentUser: boolean;
+}) {
+  // Force the text to be a string
+  const displayText = String(text || '');
+  
+  return (
+    <Text
+      style={{
+        color: '#FFFFFF',
+        fontSize: 16,
+        lineHeight: 22,
+      }}
+    >
+      {displayText}
+    </Text>
+  );
+}
+
+// Separate component for message bubble
+function MessageBubble({
+  message,
+  isCurrentUser,
+  theme,
+}: {
+  message: Message;
+  isCurrentUser: boolean;
+  theme: any;
+}) {
+  const displayName = message.userProfile?.display_name || 'User';
+  const initials = getInitials(message.userProfile?.display_name, message.user_id);
+  const avatarColor = getAvatarColor(message.user_id);
+  const messageText = message.message_text || '[Empty message]';
+
+  return (
+    <View
+      style={[
+        styles.messageWrapper,
+        isCurrentUser ? styles.messageWrapperRight : styles.messageWrapperLeft,
+      ]}
+    >
+      <View style={styles.messageRow}>
+        {!isCurrentUser && (
+          <View style={[styles.avatar, { backgroundColor: avatarColor }]}>
+            <Text style={styles.avatarText}>{initials}</Text>
+          </View>
+        )}
+
+        <View style={styles.messageContent}>
+          {!isCurrentUser && (
+            <Text style={[styles.senderName, { color: theme.colors.text }]}>
+              {displayName}
+            </Text>
+          )}
+
+          <View
+            style={[
+              styles.bubbleContainer,
+              isCurrentUser
+                ? { backgroundColor: theme.colors.primary }
+                : { backgroundColor: '#10B981', borderWidth: 0, borderColor: 'transparent' },
+              message.isOptimistic && { opacity: 0.7 },
+            ]}
+          >
+            <MessageTextContent 
+              text={messageText} 
+              isCurrentUser={isCurrentUser} 
+            />
+          </View>
+
+          <View style={styles.timestampRow}>
+            <Text style={[styles.timestamp, { color: theme.colors.text }]}>
+              {formatMessageTime(message.created_at)}
+            </Text>
+            {message.isOptimistic && (
+              <Text style={[styles.sendingText, { color: theme.colors.text }]}>
+                Sending...
+              </Text>
+            )}
+          </View>
+        </View>
+
+        {isCurrentUser && (
+          <View style={[styles.avatar, { backgroundColor: avatarColor }]}>
+            <Text style={styles.avatarText}>{initials}</Text>
+          </View>
+        )}
+      </View>
+    </View>
+  );
+}
+
+// Helper functions defined outside component
+function getInitials(displayName: string | null | undefined, userId: string): string {
+  if (displayName) {
+    return displayName
+      .split(' ')
+      .map((n) => n[0])
+      .join('')
+      .toUpperCase()
+      .substring(0, 2);
+  }
+  return userId.substring(0, 2).toUpperCase();
+}
+
+function getAvatarColor(userId: string): string {
+  const colors = [
+    '#FF6B6B', '#4ECDC4', '#45B7D1', '#FFA07A', '#98D8C8',
+    '#F7DC6F', '#BB8FCE', '#85C1E2', '#F8B739', '#52B788',
+  ];
+  const index = userId.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0) % colors.length;
+  return colors[index];
+}
+
+function formatMessageTime(timestamp: string): string {
+  const date = new Date(timestamp);
+  return date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+}
+
 export default function ChatTab({ jobId }: ChatTabProps) {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
-  const scrollViewRef = useRef<ScrollView>(null);
+  const scrollViewRef = useRef<KeyboardAwareScrollView>(null);
   const [message, setMessage] = useState('');
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(true);
@@ -62,18 +186,24 @@ export default function ChatTab({ jobId }: ChatTabProps) {
     };
   }, [jobId]);
 
+  useEffect(() => {
+    const keyboardDidShow = Keyboard.addListener('keyboardDidShow', () => {
+      scrollViewRef.current?.scrollToEnd({ animated: true });
+    });
+    return () => keyboardDidShow.remove();
+  }, []);
+
   const getCurrentUser = async () => {
     const { data: { user } } = await supabase.auth.getUser();
     if (user) {
       setCurrentUserId(user.id);
-      
-      // Fetch current user's profile for optimistic updates
+
       const { data: profileData } = await supabase
         .from('user_profiles')
         .select('user_id, display_name, avatar_url')
         .eq('user_id', user.id)
         .single();
-      
+
       if (profileData) {
         setCurrentUserProfile(profileData);
       } else {
@@ -87,7 +217,6 @@ export default function ChatTab({ jobId }: ChatTabProps) {
   };
 
   const setupRealtimeSubscription = () => {
-    // Create a channel for this specific job's chat
     const channel = supabase
       .channel(`chat:${jobId}`)
       .on(
@@ -100,21 +229,19 @@ export default function ChatTab({ jobId }: ChatTabProps) {
         },
         (payload) => {
           console.log('New message received via Realtime:', payload);
-          
-          // Remove optimistic message if it exists and replace with real one
-          setMessages(prev => {
-            // Check if this message was already added optimistically
-            const hasOptimistic = prev.some(msg => msg.isOptimistic && msg.message_text === payload.new.message_text);
-            
+
+          setMessages((prev) => {
+            const hasOptimistic = prev.some(
+              (msg) => msg.isOptimistic && msg.message_text === payload.new.message_text
+            );
+
             if (hasOptimistic) {
-              // Replace optimistic message with real one
-              return prev.map(msg => 
+              return prev.map((msg) =>
                 msg.isOptimistic && msg.message_text === payload.new.message_text
-                  ? { ...payload.new as Message, isOptimistic: false }
+                  ? { ...(payload.new as Message), isOptimistic: false }
                   : msg
               );
             } else {
-              // This is a message from another user, fetch to get profile
               fetchMessages();
               return prev;
             }
@@ -130,9 +257,8 @@ export default function ChatTab({ jobId }: ChatTabProps) {
 
   const fetchMessages = async () => {
     try {
-      setLoading(true);
-      
-      // Step 1: Fetch chat messages
+      if (messages.length === 0) setLoading(true);
+
       const { data: messagesData, error: messagesError } = await supabase
         .from('chat_messages')
         .select('id, message_text, user_id, created_at, message_type, image_url')
@@ -151,40 +277,27 @@ export default function ChatTab({ jobId }: ChatTabProps) {
         return;
       }
 
-      console.log('Fetched messages:', messagesData.length);
+      console.log('Fetched messages count:', messagesData.length);
 
-      // Debug: Log message data to identify the issue
+      // Log each message for debugging
       messagesData.forEach((msg, idx) => {
-        console.log(`Message ${idx}:`, {
+        console.log(`[DEBUG] Message ${idx}:`, {
           id: msg.id,
-          message_type: msg.message_type,
-          message_type_typeof: typeof msg.message_type,
-          message_text: msg.message_text?.substring(0, 30),
-          has_text: !!msg.message_text,
-          text_length: msg.message_text?.length,
+          text: msg.message_text?.substring(0, 50),
+          type: msg.message_type,
+          hasText: Boolean(msg.message_text),
         });
       });
 
-      // Step 2: Get unique user IDs from messages
-      const userIds = [...new Set(messagesData.map(msg => msg.user_id))];
-      console.log('Fetching profiles for user IDs:', userIds);
+      const userIds = [...new Set(messagesData.map((msg) => msg.user_id))];
 
-      // Step 3: Fetch user profiles for those user IDs
-      const { data: profilesData, error: profilesError } = await supabase
+      const { data: profilesData } = await supabase
         .from('user_profiles')
         .select('user_id, display_name, avatar_url')
         .in('user_id', userIds);
 
-      if (profilesError) {
-        console.error('Error fetching user profiles:', profilesError);
-        // Continue without profiles - we'll use fallback display
-      }
-
-      console.log('Fetched profiles:', profilesData?.length || 0);
-
-      // Step 4: Map profiles to messages
-      const messagesWithProfiles = messagesData.map(msg => {
-        const userProfile = profilesData?.find(profile => profile.user_id === msg.user_id);
+      const messagesWithProfiles = messagesData.map((msg) => {
+        const userProfile = profilesData?.find((profile) => profile.user_id === msg.user_id);
         return {
           ...msg,
           userProfile: userProfile || {
@@ -197,8 +310,7 @@ export default function ChatTab({ jobId }: ChatTabProps) {
       });
 
       setMessages(messagesWithProfiles);
-      
-      // Scroll to bottom after messages load
+
       setTimeout(() => {
         scrollViewRef.current?.scrollToEnd({ animated: false });
       }, 100);
@@ -213,15 +325,12 @@ export default function ChatTab({ jobId }: ChatTabProps) {
   const handleSend = async () => {
     const trimmedMessage = message.trim();
     if (!trimmedMessage || !currentUserId || sending) {
-      console.log('Cannot send message:', { trimmedMessage, currentUserId, sending });
       return;
     }
 
     try {
       setSending(true);
-      console.log('Sending message:', { jobId, userId: currentUserId, message: trimmedMessage });
 
-      // Create optimistic message with temporary ID
       const optimisticMessage: Message = {
         id: `temp-${Date.now()}`,
         message_text: trimmedMessage,
@@ -236,11 +345,9 @@ export default function ChatTab({ jobId }: ChatTabProps) {
         isOptimistic: true,
       };
 
-      // Add optimistic message immediately
-      setMessages(prev => [...prev, optimisticMessage]);
+      setMessages((prev) => [...prev, optimisticMessage]);
       setMessage('');
-      
-      // Scroll to bottom to show new message
+
       setTimeout(() => {
         scrollViewRef.current?.scrollToEnd({ animated: true });
       }, 50);
@@ -257,17 +364,11 @@ export default function ChatTab({ jobId }: ChatTabProps) {
 
       if (error) {
         console.error('Error sending message:', error);
-        
-        // Remove optimistic message on error
-        setMessages(prev => prev.filter(msg => msg.id !== optimisticMessage.id));
-        
+        setMessages((prev) => prev.filter((msg) => msg.id !== optimisticMessage.id));
         alert('Failed to send message. Please try again.');
-      } else {
-        console.log('Message sent successfully:', data);
-        
-        // Replace optimistic message with real one
-        if (data && data.length > 0) {
-          setMessages(prev => prev.map(msg => 
+      } else if (data && data.length > 0) {
+        setMessages((prev) =>
+          prev.map((msg) =>
             msg.id === optimisticMessage.id
               ? {
                   ...data[0],
@@ -279,10 +380,8 @@ export default function ChatTab({ jobId }: ChatTabProps) {
                   isOptimistic: false,
                 }
               : msg
-          ));
-        }
-        
-        // The realtime subscription will also handle this, but optimistic update is faster
+          )
+        );
       }
     } catch (error) {
       console.error('Error sending message:', error);
@@ -294,35 +393,6 @@ export default function ChatTab({ jobId }: ChatTabProps) {
 
   const handleAttachment = () => {
     console.log('Opening attachment picker');
-    // TODO: Implement attachment functionality
-  };
-
-  const formatTime = (timestamp: string) => {
-    const date = new Date(timestamp);
-    return date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
-  };
-
-  const getUserInitials = (displayName: string | null, userId: string) => {
-    if (displayName) {
-      return displayName
-        .split(' ')
-        .map(n => n[0])
-        .join('')
-        .toUpperCase()
-        .substring(0, 2);
-    }
-    // Fallback to first 2 characters of user ID
-    return userId.substring(0, 2).toUpperCase();
-  };
-
-  const getAvatarColor = (userId: string) => {
-    // Generate a consistent color based on user ID
-    const colors = [
-      '#FF6B6B', '#4ECDC4', '#45B7D1', '#FFA07A', '#98D8C8',
-      '#F7DC6F', '#BB8FCE', '#85C1E2', '#F8B739', '#52B788'
-    ];
-    const index = userId.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0) % colors.length;
-    return colors[index];
   };
 
   if (loading) {
@@ -334,21 +404,16 @@ export default function ChatTab({ jobId }: ChatTabProps) {
   }
 
   return (
-    <KeyboardAvoidingView
-      style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      keyboardVerticalOffset={Platform.OS === 'ios' ? 140 : 100}
-    >
-      {/* Messages */}
-      <ScrollView
+    <View style={styles.container}>
+      <KeyboardAwareScrollView
         ref={scrollViewRef}
         style={styles.messagesContainer}
-        contentContainerStyle={[
-          styles.messagesContent,
-          { paddingBottom: 20 }
-        ]}
+        contentContainerStyle={styles.messagesContent}
         showsVerticalScrollIndicator={false}
         onContentSizeChange={() => scrollViewRef.current?.scrollToEnd({ animated: true })}
+        bottomOffset={20}
+        enableAutomaticScroll={true}
+        enableOnAndroid={true}
       >
         {messages.length === 0 ? (
           <View style={styles.emptyState}>
@@ -367,90 +432,17 @@ export default function ChatTab({ jobId }: ChatTabProps) {
             </Text>
           </View>
         ) : (
-          messages.map((msg, index) => {
-            const isCurrentUser = msg.user_id === currentUserId;
-            const displayName = msg.userProfile?.display_name || 'User';
-            const initials = getUserInitials(msg.userProfile?.display_name, msg.user_id);
-            const avatarColor = getAvatarColor(msg.user_id);
-            
-            // Ensure we have message text to display
-            const messageText = msg.message_text || '[No message text]';
-            
-            // Log for debugging
-            console.log(`Rendering message ${index}:`, {
-              id: msg.id,
-              hasText: !!msg.message_text,
-              textLength: msg.message_text?.length,
-              messageType: msg.message_type,
-            });
-
-            return (
-              <React.Fragment key={index}>
-                <View
-                  style={[
-                    styles.messageWrapper,
-                    isCurrentUser ? styles.messageWrapperRight : styles.messageWrapperLeft,
-                  ]}
-                >
-                  {/* Avatar and message container */}
-                  <View style={styles.messageRow}>
-                    {!isCurrentUser && (
-                      <View style={[styles.avatar, { backgroundColor: avatarColor }]}>
-                        <Text style={styles.avatarText}>{initials}</Text>
-                      </View>
-                    )}
-                    
-                    <View style={styles.messageContent}>
-                      {!isCurrentUser && (
-                        <Text style={[styles.senderName, { color: theme.colors.text }]}>
-                          {displayName}
-                        </Text>
-                      )}
-                      <View
-                        style={[
-                          styles.messageBubble,
-                          isCurrentUser
-                            ? { backgroundColor: theme.colors.primary, opacity: msg.isOptimistic ? 0.7 : 1 }
-                            : { backgroundColor: theme.colors.card, borderColor: theme.colors.border },
-                        ]}
-                      >
-                        <Text
-                          style={[
-                            styles.messageText,
-                            { 
-                              color: isCurrentUser ? '#FFFFFF' : theme.colors.text,
-                            },
-                          ]}
-                        >
-                          {messageText}
-                        </Text>
-                      </View>
-                      <View style={styles.timestampRow}>
-                        <Text style={[styles.timestamp, { color: theme.colors.text }]}>
-                          {formatTime(msg.created_at)}
-                        </Text>
-                        {msg.isOptimistic && (
-                          <Text style={[styles.sendingIndicator, { color: theme.colors.text }]}>
-                            Sending...
-                          </Text>
-                        )}
-                      </View>
-                    </View>
-
-                    {isCurrentUser && (
-                      <View style={[styles.avatar, { backgroundColor: avatarColor }]}>
-                        <Text style={styles.avatarText}>{initials}</Text>
-                      </View>
-                    )}
-                  </View>
-                </View>
-              </React.Fragment>
-            );
-          })
+          messages.map((msg) => (
+            <MessageBubble
+              key={msg.id}
+              message={msg}
+              isCurrentUser={msg.user_id === currentUserId}
+              theme={theme}
+            />
+          ))
         )}
-      </ScrollView>
+      </KeyboardAwareScrollView>
 
-      {/* Floating Add Button - Repositioned higher up */}
       <TouchableOpacity
         style={[styles.floatingButton, { backgroundColor: theme.colors.primary }]}
         onPress={handleAttachment}
@@ -463,19 +455,21 @@ export default function ChatTab({ jobId }: ChatTabProps) {
         />
       </TouchableOpacity>
 
-      {/* Input Bar with Safe Area */}
-      <View 
+      <View
         style={[
-          styles.inputContainer, 
-          { 
-            backgroundColor: theme.colors.card, 
+          styles.inputContainer,
+          {
+            backgroundColor: theme.colors.card,
             borderTopColor: theme.colors.border,
             paddingBottom: Math.max(insets.bottom, 12),
-          }
+          },
         ]}
       >
         <TextInput
-          style={[styles.input, { backgroundColor: theme.colors.background, color: theme.colors.text }]}
+          style={[
+            styles.input,
+            { backgroundColor: theme.colors.background, color: theme.colors.text },
+          ]}
           placeholder="Type a message..."
           placeholderTextColor={theme.colors.text + '80'}
           value={message}
@@ -486,11 +480,11 @@ export default function ChatTab({ jobId }: ChatTabProps) {
         />
         <TouchableOpacity
           style={[
-            styles.sendButton, 
-            { 
+            styles.sendButton,
+            {
               backgroundColor: theme.colors.primary,
-              opacity: (message.trim() && !sending) ? 1 : 0.5
-            }
+              opacity: message.trim() && !sending ? 1 : 0.5,
+            },
           ]}
           onPress={handleSend}
           disabled={!message.trim() || sending}
@@ -507,7 +501,7 @@ export default function ChatTab({ jobId }: ChatTabProps) {
           )}
         </TouchableOpacity>
       </View>
-    </KeyboardAvoidingView>
+    </View>
   );
 }
 
@@ -524,6 +518,7 @@ const styles = StyleSheet.create({
   },
   messagesContent: {
     padding: 16,
+    paddingBottom: 20,
   },
   emptyState: {
     flex: 1,
@@ -571,7 +566,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   messageContent: {
-    flex: 1,
+    flexShrink: 1,
   },
   senderName: {
     fontSize: 12,
@@ -580,17 +575,11 @@ const styles = StyleSheet.create({
     marginLeft: 4,
     opacity: 0.7,
   },
-  messageBubble: {
+  bubbleContainer: {
     borderRadius: 16,
-    padding: 12,
-    borderWidth: 1,
-    borderColor: 'transparent',
-    minHeight: 40,
-  },
-  messageText: {
-    fontSize: 16,
-    lineHeight: 22,
-    fontWeight: '400',
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    minWidth: 40,
   },
   timestampRow: {
     flexDirection: 'row',
@@ -603,7 +592,7 @@ const styles = StyleSheet.create({
     fontSize: 11,
     opacity: 0.5,
   },
-  sendingIndicator: {
+  sendingText: {
     fontSize: 11,
     opacity: 0.5,
     fontStyle: 'italic',
@@ -617,8 +606,11 @@ const styles = StyleSheet.create({
     borderRadius: 28,
     justifyContent: 'center',
     alignItems: 'center',
-    boxShadow: '0px 4px 12px rgba(0, 0, 0, 0.15)',
     elevation: 6,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
     zIndex: 10,
   },
   inputContainer: {
