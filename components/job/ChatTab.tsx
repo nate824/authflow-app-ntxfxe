@@ -8,6 +8,7 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Platform,
+  ScrollView,
 } from 'react-native';
 import { useTheme } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -15,7 +16,8 @@ import { IconSymbol } from '@/components/IconSymbol';
 import { supabase } from '@/app/integrations/supabase/client';
 import { RealtimeChannel } from '@supabase/supabase-js';
 import { Keyboard } from 'react-native';
-import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
+import { KeyboardGestureArea, useReanimatedKeyboardAnimation } from 'react-native-keyboard-controller';
+import Animated, { useAnimatedStyle } from 'react-native-reanimated';
 
 interface UserProfile {
   user_id: string;
@@ -165,7 +167,7 @@ function formatMessageTime(timestamp: string): string {
 export default function ChatTab({ jobId }: ChatTabProps) {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
-  const scrollViewRef = useRef<KeyboardAwareScrollView>(null);
+  const scrollViewRef = useRef<ScrollView>(null);
   const [message, setMessage] = useState('');
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(true);
@@ -173,6 +175,14 @@ export default function ChatTab({ jobId }: ChatTabProps) {
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [currentUserProfile, setCurrentUserProfile] = useState<UserProfile | null>(null);
   const channelRef = useRef<RealtimeChannel | null>(null);
+
+  // Get keyboard animation height
+  const { height: keyboardHeight } = useReanimatedKeyboardAnimation();
+
+  // Create animated style for input container
+  const inputAnimatedStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: keyboardHeight.value }],
+  }));
 
   useEffect(() => {
     getCurrentUser();
@@ -404,16 +414,13 @@ export default function ChatTab({ jobId }: ChatTabProps) {
   }
 
   return (
-    <View style={styles.container}>
-      <KeyboardAwareScrollView
+    <KeyboardGestureArea style={styles.container}>
+      <ScrollView
         ref={scrollViewRef}
         style={styles.messagesContainer}
         contentContainerStyle={styles.messagesContent}
         showsVerticalScrollIndicator={false}
         onContentSizeChange={() => scrollViewRef.current?.scrollToEnd({ animated: true })}
-        bottomOffset={20}
-        enableAutomaticScroll={true}
-        enableOnAndroid={true}
       >
         {messages.length === 0 ? (
           <View style={styles.emptyState}>
@@ -441,7 +448,7 @@ export default function ChatTab({ jobId }: ChatTabProps) {
             />
           ))
         )}
-      </KeyboardAwareScrollView>
+      </ScrollView>
 
       <TouchableOpacity
         style={[styles.floatingButton, { backgroundColor: theme.colors.primary }]}
@@ -455,7 +462,7 @@ export default function ChatTab({ jobId }: ChatTabProps) {
         />
       </TouchableOpacity>
 
-      <View
+      <Animated.View
         style={[
           styles.inputContainer,
           {
@@ -463,6 +470,7 @@ export default function ChatTab({ jobId }: ChatTabProps) {
             borderTopColor: theme.colors.border,
             paddingBottom: Math.max(insets.bottom, 12),
           },
+          inputAnimatedStyle,
         ]}
       >
         <TextInput
@@ -500,8 +508,8 @@ export default function ChatTab({ jobId }: ChatTabProps) {
             />
           )}
         </TouchableOpacity>
-      </View>
-    </View>
+      </Animated.View>
+    </KeyboardGestureArea>
   );
 }
 
