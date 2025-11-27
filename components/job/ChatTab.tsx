@@ -247,51 +247,6 @@ export default function ChatTab({ jobId }: ChatTabProps) {
     }
   }, [jobId]);
 
-  const setupRealtimeSubscription = useCallback(() => {
-    const channel = supabase
-      .channel(`chat:${jobId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'chat_messages',
-          filter: `job_id=eq.${jobId}`,
-        },
-        (payload) => {
-          console.log('New message received via Realtime:', payload);
-
-          setMessages((prev) => {
-            const hasOptimistic = prev.some(
-              (msg) => msg.isOptimistic && msg.message_text === payload.new.message_text
-            );
-
-            if (hasOptimistic) {
-              return prev.map((msg) =>
-                msg.isOptimistic && msg.message_text === payload.new.message_text
-                  ? { ...(payload.new as Message), isOptimistic: false }
-                  : msg
-              );
-            } else {
-              fetchMessages();
-              return prev;
-            }
-          });
-
-          // Mark as read when new message arrives while viewing chat
-          // Use a small delay to ensure the message is rendered first
-          setTimeout(() => {
-            markMessagesAsRead();
-          }, 500);
-        }
-      )
-      .subscribe((status) => {
-        console.log('Realtime subscription status:', status);
-      });
-
-    channelRef.current = channel;
-  }, [jobId, markMessagesAsRead]);
-
   const fetchMessages = useCallback(async () => {
     try {
       if (messages.length === 0) setLoading(true);
@@ -348,6 +303,51 @@ export default function ChatTab({ jobId }: ChatTabProps) {
       setLoading(false);
     }
   }, [jobId, messages.length]);
+
+  const setupRealtimeSubscription = useCallback(() => {
+    const channel = supabase
+      .channel(`chat:${jobId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'chat_messages',
+          filter: `job_id=eq.${jobId}`,
+        },
+        (payload) => {
+          console.log('New message received via Realtime:', payload);
+
+          setMessages((prev) => {
+            const hasOptimistic = prev.some(
+              (msg) => msg.isOptimistic && msg.message_text === payload.new.message_text
+            );
+
+            if (hasOptimistic) {
+              return prev.map((msg) =>
+                msg.isOptimistic && msg.message_text === payload.new.message_text
+                  ? { ...(payload.new as Message), isOptimistic: false }
+                  : msg
+              );
+            } else {
+              fetchMessages();
+              return prev;
+            }
+          });
+
+          // Mark as read when new message arrives while viewing chat
+          // Use a small delay to ensure the message is rendered first
+          setTimeout(() => {
+            markMessagesAsRead();
+          }, 500);
+        }
+      )
+      .subscribe((status) => {
+        console.log('Realtime subscription status:', status);
+      });
+
+    channelRef.current = channel;
+  }, [jobId, markMessagesAsRead, fetchMessages]);
 
   useEffect(() => {
     getCurrentUser();
