@@ -38,6 +38,7 @@ interface Job {
   processing_status: 'idle' | 'scheduled' | 'running' | 'completed' | 'failed';
   processing_scheduled_for: string | null;
   last_processed_at: string | null;
+  unread_count?: number;
 }
 
 interface User {
@@ -108,12 +109,77 @@ export default function HomeScreen() {
         console.error('Error loading jobs:', error);
       } else {
         console.log('Jobs loaded:', data);
-        setJobs(data || []);
+        
+        // Load unread counts for each job
+        if (data && data.length > 0) {
+          const jobsWithUnreadCounts = await Promise.all(
+            data.map(async (job) => {
+              const unreadCount = await getUnreadMessageCount(job.id);
+              return { ...job, unread_count: unreadCount };
+            })
+          );
+          setJobs(jobsWithUnreadCounts);
+        } else {
+          setJobs([]);
+        }
       }
     } catch (error) {
       console.error('Exception loading jobs:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const getUnreadMessageCount = async (jobId: string): Promise<number> => {
+    try {
+      if (!user?.id) return 0;
+
+      // Get the last read timestamp for this user and job
+      const { data: readStatus, error: readError } = await supabase
+        .from('chat_read_status')
+        .select('last_read_at')
+        .eq('user_id', user.id)
+        .eq('job_id', jobId)
+        .single();
+
+      if (readError && readError.code !== 'PGRST116') {
+        console.error('Error fetching read status:', readError);
+        return 0;
+      }
+
+      // If no read status exists, count all messages except user's own
+      if (!readStatus) {
+        const { count, error: countError } = await supabase
+          .from('chat_messages')
+          .select('*', { count: 'exact', head: true })
+          .eq('job_id', jobId)
+          .neq('user_id', user.id);
+
+        if (countError) {
+          console.error('Error counting messages:', countError);
+          return 0;
+        }
+
+        return count || 0;
+      }
+
+      // Count messages created after last read time, excluding user's own messages
+      const { count, error: countError } = await supabase
+        .from('chat_messages')
+        .select('*', { count: 'exact', head: true })
+        .eq('job_id', jobId)
+        .gt('created_at', readStatus.last_read_at)
+        .neq('user_id', user.id);
+
+      if (countError) {
+        console.error('Error counting unread messages:', countError);
+        return 0;
+      }
+
+      return count || 0;
+    } catch (error) {
+      console.error('Exception getting unread count:', error);
+      return 0;
     }
   };
 
@@ -483,9 +549,9 @@ export default function HomeScreen() {
           contentContainerStyle={styles.jobsContainer}
           showsVerticalScrollIndicator={false}
         >
-          {jobs.map((job, index) => (
+          {jobs.map((job) => (
             <TouchableOpacity
-              key={index}
+              key={job.id}
               style={[styles.jobCard, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}
               onPress={() => handleJobPress(job)}
               onLongPress={() => handleLongPress(job)}
@@ -493,7 +559,16 @@ export default function HomeScreen() {
               activeOpacity={0.7}
             >
               <View style={styles.jobCardHeader}>
-                <Text style={[styles.jobName, { color: theme.colors.text }]}>{job.job_name}</Text>
+                <View style={styles.jobCardTitleRow}>
+                  <Text style={[styles.jobName, { color: theme.colors.text }]}>{job.job_name}</Text>
+                  {job.unread_count !== undefined && job.unread_count > 0 && (
+                    <View style={[styles.unreadBadge, { backgroundColor: theme.colors.notification }]}>
+                      <Text style={styles.unreadBadgeText}>
+                        {job.unread_count > 99 ? '99+' : job.unread_count}
+                      </Text>
+                    </View>
+                  )}
+                </View>
                 {profile?.is_admin && (
                   <IconSymbol
                     ios_icon_name="ellipsis.circle"
@@ -924,10 +999,29 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 12,
   },
+  jobCardTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flex: 1,
+  },
   jobName: {
     fontSize: 20,
     fontWeight: '700',
     flex: 1,
+  },
+  unreadBadge: {
+    minWidth: 24,
+    height: 24,
+    borderRadius: 12,
+    paddingHorizontal: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  unreadBadgeText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '700',
   },
   jobCardDetails: {
     gap: 8,

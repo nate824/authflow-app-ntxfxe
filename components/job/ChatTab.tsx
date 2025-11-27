@@ -15,9 +15,12 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { IconSymbol } from '@/components/IconSymbol';
 import { supabase } from '@/app/integrations/supabase/client';
 import { RealtimeChannel } from '@supabase/supabase-js';
-import { Keyboard } from 'react-native';
-import { KeyboardGestureArea, useReanimatedKeyboardAnimation } from 'react-native-keyboard-controller';
-import Animated, { useAnimatedStyle } from 'react-native-reanimated';
+import { useKeyboardHandler } from 'react-native-keyboard-controller';
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withTiming,
+} from 'react-native-reanimated';
 
 interface UserProfile {
   user_id: string;
@@ -41,16 +44,9 @@ interface ChatTabProps {
 }
 
 // Separate component for message text to isolate Android rendering
-function MessageTextContent({ 
-  text, 
-  isCurrentUser 
-}: { 
-  text: string; 
-  isCurrentUser: boolean;
-}) {
-  // Force the text to be a string
+function MessageTextContent({ text }: { text: string }) {
   const displayText = String(text || '');
-  
+
   return (
     <Text
       style={{
@@ -109,10 +105,7 @@ function MessageBubble({
               message.isOptimistic && { opacity: 0.7 },
             ]}
           >
-            <MessageTextContent 
-              text={messageText} 
-              isCurrentUser={isCurrentUser} 
-            />
+            <MessageTextContent text={messageText} />
           </View>
 
           <View style={styles.timestampRow}>
@@ -176,18 +169,37 @@ export default function ChatTab({ jobId }: ChatTabProps) {
   const [currentUserProfile, setCurrentUserProfile] = useState<UserProfile | null>(null);
   const channelRef = useRef<RealtimeChannel | null>(null);
 
-  // Get keyboard animation height
-  const { height: keyboardHeight } = useReanimatedKeyboardAnimation();
+  // Keyboard animation
+  const keyboardHeight = useSharedValue(0);
 
-  // Create animated style for input container
-  const inputAnimatedStyle = useAnimatedStyle(() => ({
-    transform: [{ translateY: keyboardHeight.value }],
-  }));
+  useKeyboardHandler({
+    onMove: (event) => {
+      'worklet';
+      keyboardHeight.value = event.height;
+    },
+    onEnd: (event) => {
+      'worklet';
+      keyboardHeight.value = withTiming(event.height, { duration: 100 });
+    },
+  }, []);
+
+  const animatedInputStyle = useAnimatedStyle(() => {
+    return {
+      transform: [{ translateY: -keyboardHeight.value }],
+    };
+  });
+
+  const animatedScrollStyle = useAnimatedStyle(() => {
+    return {
+      marginBottom: keyboardHeight.value,
+    };
+  });
 
   useEffect(() => {
     getCurrentUser();
     fetchMessages();
     setupRealtimeSubscription();
+    markMessagesAsRead();
 
     return () => {
       if (channelRef.current) {
@@ -195,13 +207,6 @@ export default function ChatTab({ jobId }: ChatTabProps) {
       }
     };
   }, [jobId]);
-
-  useEffect(() => {
-    const keyboardDidShow = Keyboard.addListener('keyboardDidShow', () => {
-      scrollViewRef.current?.scrollToEnd({ animated: true });
-    });
-    return () => keyboardDidShow.remove();
-  }, []);
 
   const getCurrentUser = async () => {
     const { data: { user } } = await supabase.auth.getUser();
@@ -223,6 +228,35 @@ export default function ChatTab({ jobId }: ChatTabProps) {
           avatar_url: null,
         });
       }
+    }
+  };
+
+  const markMessagesAsRead = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const now = new Date().toISOString();
+
+      // Upsert the read status with current timestamp
+      const { error } = await supabase
+        .from('chat_read_status')
+        .upsert({
+          user_id: user.id,
+          job_id: jobId,
+          last_read_at: now,
+          updated_at: now,
+        }, {
+          onConflict: 'user_id,job_id',
+        });
+
+      if (error) {
+        console.error('Error marking messages as read:', error);
+      } else {
+        console.log('Messages marked as read for job:', jobId, 'at', now);
+      }
+    } catch (error) {
+      console.error('Exception marking messages as read:', error);
     }
   };
 
@@ -256,6 +290,12 @@ export default function ChatTab({ jobId }: ChatTabProps) {
               return prev;
             }
           });
+
+          // Mark as read when new message arrives while viewing chat
+          // Use a small delay to ensure the message is rendered first
+          setTimeout(() => {
+            markMessagesAsRead();
+          }, 500);
         }
       )
       .subscribe((status) => {
@@ -288,16 +328,6 @@ export default function ChatTab({ jobId }: ChatTabProps) {
       }
 
       console.log('Fetched messages count:', messagesData.length);
-
-      // Log each message for debugging
-      messagesData.forEach((msg, idx) => {
-        console.log(`[DEBUG] Message ${idx}:`, {
-          id: msg.id,
-          text: msg.message_text?.substring(0, 50),
-          type: msg.message_type,
-          hasText: Boolean(msg.message_text),
-        });
-      });
 
       const userIds = [...new Set(messagesData.map((msg) => msg.user_id))];
 
@@ -414,42 +444,47 @@ export default function ChatTab({ jobId }: ChatTabProps) {
   }
 
   return (
-    <KeyboardGestureArea style={styles.container}>
-      <ScrollView
-        ref={scrollViewRef}
-        style={styles.messagesContainer}
-        contentContainerStyle={styles.messagesContent}
-        showsVerticalScrollIndicator={false}
-        onContentSizeChange={() => scrollViewRef.current?.scrollToEnd({ animated: true })}
-      >
-        {messages.length === 0 ? (
-          <View style={styles.emptyState}>
-            <IconSymbol
-              ios_icon_name="bubble.left.and.bubble.right"
-              android_material_icon_name="chat"
-              size={64}
-              color={theme.colors.text}
-              style={{ opacity: 0.3 }}
-            />
-            <Text style={[styles.emptyStateText, { color: theme.colors.text }]}>
-              No messages yet
-            </Text>
-            <Text style={[styles.emptyStateSubtext, { color: theme.colors.text }]}>
-              Start the conversation by sending a message
-            </Text>
-          </View>
-        ) : (
-          messages.map((msg) => (
-            <MessageBubble
-              key={msg.id}
-              message={msg}
-              isCurrentUser={msg.user_id === currentUserId}
-              theme={theme}
-            />
-          ))
-        )}
-      </ScrollView>
+    <View style={styles.container}>
+      {/* Messages ScrollView - animated to shrink when keyboard opens */}
+      <Animated.View style={[styles.messagesContainer, animatedScrollStyle]}>
+        <ScrollView
+          ref={scrollViewRef}
+          style={styles.scrollView}
+          contentContainerStyle={styles.messagesContent}
+          showsVerticalScrollIndicator={false}
+          onContentSizeChange={() => scrollViewRef.current?.scrollToEnd({ animated: true })}
+          keyboardShouldPersistTaps="handled"
+        >
+          {messages.length === 0 ? (
+            <View style={styles.emptyState}>
+              <IconSymbol
+                ios_icon_name="bubble.left.and.bubble.right"
+                android_material_icon_name="chat"
+                size={64}
+                color={theme.colors.text}
+                style={{ opacity: 0.3 }}
+              />
+              <Text style={[styles.emptyStateText, { color: theme.colors.text }]}>
+                No messages yet
+              </Text>
+              <Text style={[styles.emptyStateSubtext, { color: theme.colors.text }]}>
+                Start the conversation by sending a message
+              </Text>
+            </View>
+          ) : (
+            messages.map((msg) => (
+              <MessageBubble
+                key={msg.id}
+                message={msg}
+                isCurrentUser={msg.user_id === currentUserId}
+                theme={theme}
+              />
+            ))
+          )}
+        </ScrollView>
+      </Animated.View>
 
+      {/* Floating attachment button */}
       <TouchableOpacity
         style={[styles.floatingButton, { backgroundColor: theme.colors.primary }]}
         onPress={handleAttachment}
@@ -462,6 +497,7 @@ export default function ChatTab({ jobId }: ChatTabProps) {
         />
       </TouchableOpacity>
 
+      {/* Input container - animated to move up with keyboard */}
       <Animated.View
         style={[
           styles.inputContainer,
@@ -470,7 +506,7 @@ export default function ChatTab({ jobId }: ChatTabProps) {
             borderTopColor: theme.colors.border,
             paddingBottom: Math.max(insets.bottom, 12),
           },
-          inputAnimatedStyle,
+          animatedInputStyle,
         ]}
       >
         <TextInput
@@ -509,7 +545,7 @@ export default function ChatTab({ jobId }: ChatTabProps) {
           )}
         </TouchableOpacity>
       </Animated.View>
-    </KeyboardGestureArea>
+    </View>
   );
 }
 
@@ -524,9 +560,12 @@ const styles = StyleSheet.create({
   messagesContainer: {
     flex: 1,
   },
+  scrollView: {
+    flex: 1,
+  },
   messagesContent: {
     padding: 16,
-    paddingBottom: 20,
+    paddingBottom: 100,
   },
   emptyState: {
     flex: 1,
@@ -622,6 +661,10 @@ const styles = StyleSheet.create({
     zIndex: 10,
   },
   inputContainer: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
     flexDirection: 'row',
     alignItems: 'flex-end',
     paddingHorizontal: 12,

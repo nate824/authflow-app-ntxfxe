@@ -16,6 +16,8 @@ import {
 } from "@react-navigation/native";
 import { StatusBar } from "expo-status-bar";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
+import { KeyboardProvider } from "react-native-keyboard-controller";
+import { usePushNotifications } from "@/hooks/usePushNotifications";
 
 // Prevent the splash screen from auto-hiding before asset loading is complete.
 SplashScreen.preventAutoHideAsync();
@@ -29,21 +31,31 @@ function RootLayoutNav() {
   const segments = useSegments();
   const router = useRouter();
 
+  // Initialize push notifications
+  usePushNotifications();
+
   useEffect(() => {
     if (loading) return;
 
-    const inAuthGroup = segments[0] === '(auth)';
+    const inAuthGroup = segments[0] === "(auth)";
 
-    console.log('Navigation check - Session:', !!session, 'In auth group:', inAuthGroup, 'Segments:', segments);
+    console.log(
+      "Navigation check - Session:",
+      !!session,
+      "In auth group:",
+      inAuthGroup,
+      "Segments:",
+      segments
+    );
 
     if (!session && !inAuthGroup) {
       // Redirect to login if not authenticated
-      console.log('Redirecting to login...');
-      router.replace('/(auth)/login');
+      console.log("Redirecting to login...");
+      router.replace("/(auth)/login");
     } else if (session && inAuthGroup) {
       // Redirect to home if authenticated
-      console.log('Redirecting to home...');
-      router.replace('/(tabs)');
+      console.log("Redirecting to home...");
+      router.replace("/(tabs)");
     }
   }, [session, segments, loading]);
 
@@ -75,6 +87,12 @@ function RootLayoutNav() {
           headerShown: false,
         }}
       />
+      <Stack.Screen
+        name="job-details"
+        options={{
+          headerShown: false,
+        }}
+      />
     </Stack>
   );
 }
@@ -92,7 +110,7 @@ export default function RootLayout() {
     }
   }, [loaded]);
 
-  React.useEffect(() => {
+  useEffect(() => {
     if (
       !networkState.isConnected &&
       networkState.isInternetReachable === false
@@ -136,16 +154,18 @@ export default function RootLayout() {
   return (
     <>
       <StatusBar style="auto" animated />
-      <ThemeProvider
-        value={colorScheme === "dark" ? CustomDarkTheme : CustomDefaultTheme}
-      >
-        <AuthProvider>
-          <GestureHandlerRootView>
-            <RootLayoutNav />
-            <SystemBars style={"auto"} />
-          </GestureHandlerRootView>
-        </AuthProvider>
-      </ThemeProvider>
+      <KeyboardProvider>
+        <ThemeProvider
+          value={colorScheme === "dark" ? CustomDarkTheme : CustomDefaultTheme}
+        >
+          <AuthProvider>
+            <GestureHandlerRootView style={{ flex: 1 }}>
+              <RootLayoutNav />
+              <SystemBars style={"auto"} />
+            </GestureHandlerRootView>
+          </AuthProvider>
+        </ThemeProvider>
+      </KeyboardProvider>
     </>
   );
 }

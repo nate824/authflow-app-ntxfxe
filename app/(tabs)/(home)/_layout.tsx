@@ -1,6 +1,7 @@
 
 import { Platform } from 'react-native';
 import { Stack } from 'expo-router';
+import { KeyboardProvider } from 'react-native-keyboard-controller';
 
 export default function HomeLayout() {
   return (
