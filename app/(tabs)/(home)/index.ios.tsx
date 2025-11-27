@@ -65,14 +65,7 @@ export default function HomeScreen() {
   const [siteName, setSiteName] = useState('');
   const [startDate, setStartDate] = useState('');
 
-  useEffect(() => {
-    if (user) {
-      loadProfile();
-      loadJobs();
-    }
-  }, [user]);
-
-  const loadProfile = async () => {
+  const loadProfile = useCallback(async () => {
     try {
       const { data, error } = await supabase
         .from('user_profiles')
@@ -89,9 +82,9 @@ export default function HomeScreen() {
     } catch (error) {
       console.error('Exception loading profile:', error);
     }
-  };
+  }, [user?.id]);
 
-  const loadJobs = async () => {
+  const loadJobs = useCallback(async () => {
     try {
       setLoading(true);
       const { data, error } = await supabase
@@ -111,7 +104,14 @@ export default function HomeScreen() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    if (user) {
+      loadProfile();
+      loadJobs();
+    }
+  }, [user, loadProfile, loadJobs]);
 
   const loadAllUsers = async () => {
     if (!selectedJob) return;

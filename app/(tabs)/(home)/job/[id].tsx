@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -30,11 +30,7 @@ export default function JobRoomScreen() {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'chat' | 'summary'>('chat');
 
-  useEffect(() => {
-    loadJob();
-  }, [id]);
-
-  const loadJob = async () => {
+  const loadJob = useCallback(async () => {
     try {
       setLoading(true);
       const { data, error } = await supabase
@@ -54,7 +50,11 @@ export default function JobRoomScreen() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [id]);
+
+  useEffect(() => {
+    loadJob();
+  }, [loadJob]);
 
   if (loading) {
     return (

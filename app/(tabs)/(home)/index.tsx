@@ -70,14 +70,7 @@ export default function HomeScreen() {
   const [siteName, setSiteName] = useState('');
   const [startDate, setStartDate] = useState('');
 
-  useEffect(() => {
-    if (user) {
-      loadProfile();
-      loadJobs();
-    }
-  }, [user]);
-
-  const loadProfile = async () => {
+  const loadProfile = useCallback(async () => {
     try {
       const { data, error } = await supabase
         .from('user_profiles')
@@ -94,43 +87,9 @@ export default function HomeScreen() {
     } catch (error) {
       console.error('Exception loading profile:', error);
     }
-  };
+  }, [user?.id]);
 
-  const loadJobs = async () => {
-    try {
-      setLoading(true);
-      const { data, error } = await supabase
-        .from('jobs')
-        .select('*')
-        .eq('is_archived', false)
-        .order('start_date', { ascending: true });
-
-      if (error) {
-        console.error('Error loading jobs:', error);
-      } else {
-        console.log('Jobs loaded:', data);
-        
-        // Load unread counts for each job
-        if (data && data.length > 0) {
-          const jobsWithUnreadCounts = await Promise.all(
-            data.map(async (job) => {
-              const unreadCount = await getUnreadMessageCount(job.id);
-              return { ...job, unread_count: unreadCount };
-            })
-          );
-          setJobs(jobsWithUnreadCounts);
-        } else {
-          setJobs([]);
-        }
-      }
-    } catch (error) {
-      console.error('Exception loading jobs:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const getUnreadMessageCount = async (jobId: string): Promise<number> => {
+  const getUnreadMessageCount = useCallback(async (jobId: string): Promise<number> => {
     try {
       if (!user?.id) return 0;
 
@@ -181,7 +140,48 @@ export default function HomeScreen() {
       console.error('Exception getting unread count:', error);
       return 0;
     }
-  };
+  }, [user?.id]);
+
+  const loadJobs = useCallback(async () => {
+    try {
+      setLoading(true);
+      const { data, error } = await supabase
+        .from('jobs')
+        .select('*')
+        .eq('is_archived', false)
+        .order('start_date', { ascending: true });
+
+      if (error) {
+        console.error('Error loading jobs:', error);
+      } else {
+        console.log('Jobs loaded:', data);
+        
+        // Load unread counts for each job
+        if (data && data.length > 0) {
+          const jobsWithUnreadCounts = await Promise.all(
+            data.map(async (job) => {
+              const unreadCount = await getUnreadMessageCount(job.id);
+              return { ...job, unread_count: unreadCount };
+            })
+          );
+          setJobs(jobsWithUnreadCounts);
+        } else {
+          setJobs([]);
+        }
+      }
+    } catch (error) {
+      console.error('Exception loading jobs:', error);
+    } finally {
+      setLoading(false);
+    }
+  }, [getUnreadMessageCount]);
+
+  useEffect(() => {
+    if (user) {
+      loadProfile();
+      loadJobs();
+    }
+  }, [user, loadProfile, loadJobs]);
 
   const loadAllUsers = async () => {
     if (!selectedJob) return;

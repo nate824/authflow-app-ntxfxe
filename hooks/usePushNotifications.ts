@@ -55,7 +55,7 @@ export function usePushNotifications() {
         Notifications.removeNotificationSubscription(responseListener.current);
       }
     };
-  }, []);
+  }, [router]);
 
   return {
     expoPushToken,
