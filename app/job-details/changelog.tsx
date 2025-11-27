@@ -1,5 +1,5 @@
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -50,11 +50,7 @@ export default function ChangeLogScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
-  useEffect(() => {
-    fetchChangelog();
-  }, [jobId]);
-
-  const fetchChangelog = async () => {
+  const fetchChangelog = useCallback(async () => {
     try {
       setLoading(true);
 
@@ -119,7 +115,11 @@ export default function ChangeLogScreen() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [jobId]);
+
+  useEffect(() => {
+    fetchChangelog();
+  }, [fetchChangelog]);
 
   const handleRefresh = async () => {
     setRefreshing(true);

@@ -1,5 +1,5 @@
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -44,11 +44,7 @@ export default function JobOverviewScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
-  useEffect(() => {
-    loadJobOverview();
-  }, [jobId]);
-
-  const loadJobOverview = async () => {
+  const loadJobOverview = useCallback(async () => {
     try {
       setLoading(true);
       
@@ -89,7 +85,11 @@ export default function JobOverviewScreen() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [jobId]);
+
+  useEffect(() => {
+    loadJobOverview();
+  }, [loadJobOverview]);
 
   const handleRefresh = async () => {
     setRefreshing(true);

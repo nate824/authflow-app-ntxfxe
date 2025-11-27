@@ -1,6 +1,6 @@
 
 import "react-native-reanimated";
-import React, { useEffect } from "react";
+import React, { useEffect, useCallback } from "react";
 import { useFonts } from "expo-font";
 import { Stack, useRouter, useSegments } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
@@ -57,7 +57,7 @@ function RootLayoutNav() {
       console.log("Redirecting to home...");
       router.replace("/(tabs)");
     }
-  }, [session, segments, loading]);
+  }, [session, segments, loading, router]);
 
   return (
     <Stack>

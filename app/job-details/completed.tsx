@@ -1,5 +1,5 @@
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -31,11 +31,7 @@ export default function CompletedItemsScreen() {
   const [items, setItems] = useState<CompletedItem[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    fetchCompletedItems();
-  }, [jobId]);
-
-  const fetchCompletedItems = async () => {
+  const fetchCompletedItems = useCallback(async () => {
     try {
       setLoading(true);
       const { data, error } = await supabase
@@ -57,7 +53,11 @@ export default function CompletedItemsScreen() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [jobId]);
+
+  useEffect(() => {
+    fetchCompletedItems();
+  }, [fetchCompletedItems]);
 
   const formatTime = (timestamp: string) => {
     const date = new Date(timestamp);

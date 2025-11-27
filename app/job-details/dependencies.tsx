@@ -1,5 +1,5 @@
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -37,11 +37,7 @@ export default function DependenciesScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
-  useEffect(() => {
-    loadDependencies();
-  }, [jobId]);
-
-  const loadDependencies = async () => {
+  const loadDependencies = useCallback(async () => {
     try {
       setLoading(true);
       const { data, error } = await supabase
@@ -61,7 +57,11 @@ export default function DependenciesScreen() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [jobId]);
+
+  useEffect(() => {
+    loadDependencies();
+  }, [loadDependencies]);
 
   const handleRefresh = async () => {
     setRefreshing(true);

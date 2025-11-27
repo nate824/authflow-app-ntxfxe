@@ -1,5 +1,5 @@
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -38,11 +38,7 @@ export default function DeadlinesScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
-  useEffect(() => {
-    loadDeadlines();
-  }, [jobId]);
-
-  const loadDeadlines = async () => {
+  const loadDeadlines = useCallback(async () => {
     try {
       setLoading(true);
       const { data, error } = await supabase
@@ -62,7 +58,11 @@ export default function DeadlinesScreen() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [jobId]);
+
+  useEffect(() => {
+    loadDeadlines();
+  }, [loadDeadlines]);
 
   const handleRefresh = async () => {
     setRefreshing(true);

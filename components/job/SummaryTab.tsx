@@ -1,5 +1,5 @@
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -60,18 +60,7 @@ export default function SummaryTab({ jobId }: SummaryTabProps) {
   const [job, setJob] = useState<Job | null>(null);
   const [scopeDocument, setScopeDocument] = useState<ScopeDocument | null>(null);
 
-  useEffect(() => {
-    fetchJobData();
-  }, [jobId]);
-
-  // Refresh when screen comes back into focus
-  useFocusEffect(
-    React.useCallback(() => {
-      fetchJobData();
-    }, [jobId])
-  );
-
-  const fetchJobData = async () => {
+  const fetchJobData = useCallback(async () => {
     try {
       setLoading(true);
       
@@ -113,7 +102,18 @@ export default function SummaryTab({ jobId }: SummaryTabProps) {
     } finally {
       setLoading(false);
     }
-  };
+  }, [jobId]);
+
+  useEffect(() => {
+    fetchJobData();
+  }, [fetchJobData]);
+
+  // Refresh when screen comes back into focus
+  useFocusEffect(
+    useCallback(() => {
+      fetchJobData();
+    }, [fetchJobData])
+  );
 
   const handleRefresh = async () => {
     setRefreshing(true);

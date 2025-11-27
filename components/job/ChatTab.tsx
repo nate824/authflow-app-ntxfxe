@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -195,20 +195,7 @@ export default function ChatTab({ jobId }: ChatTabProps) {
     };
   });
 
-  useEffect(() => {
-    getCurrentUser();
-    fetchMessages();
-    setupRealtimeSubscription();
-    markMessagesAsRead();
-
-    return () => {
-      if (channelRef.current) {
-        supabase.removeChannel(channelRef.current);
-      }
-    };
-  }, [jobId]);
-
-  const getCurrentUser = async () => {
+  const getCurrentUser = useCallback(async () => {
     const { data: { user } } = await supabase.auth.getUser();
     if (user) {
       setCurrentUserId(user.id);
@@ -229,9 +216,9 @@ export default function ChatTab({ jobId }: ChatTabProps) {
         });
       }
     }
-  };
+  }, []);
 
-  const markMessagesAsRead = async () => {
+  const markMessagesAsRead = useCallback(async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
@@ -258,9 +245,9 @@ export default function ChatTab({ jobId }: ChatTabProps) {
     } catch (error) {
       console.error('Exception marking messages as read:', error);
     }
-  };
+  }, [jobId]);
 
-  const setupRealtimeSubscription = () => {
+  const setupRealtimeSubscription = useCallback(() => {
     const channel = supabase
       .channel(`chat:${jobId}`)
       .on(
@@ -303,9 +290,9 @@ export default function ChatTab({ jobId }: ChatTabProps) {
       });
 
     channelRef.current = channel;
-  };
+  }, [jobId, markMessagesAsRead]);
 
-  const fetchMessages = async () => {
+  const fetchMessages = useCallback(async () => {
     try {
       if (messages.length === 0) setLoading(true);
 
@@ -360,7 +347,20 @@ export default function ChatTab({ jobId }: ChatTabProps) {
     } finally {
       setLoading(false);
     }
-  };
+  }, [jobId, messages.length]);
+
+  useEffect(() => {
+    getCurrentUser();
+    fetchMessages();
+    setupRealtimeSubscription();
+    markMessagesAsRead();
+
+    return () => {
+      if (channelRef.current) {
+        supabase.removeChannel(channelRef.current);
+      }
+    };
+  }, [getCurrentUser, fetchMessages, setupRealtimeSubscription, markMessagesAsRead]);
 
   const handleSend = async () => {
     const trimmedMessage = message.trim();

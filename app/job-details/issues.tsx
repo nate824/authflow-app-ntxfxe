@@ -1,5 +1,5 @@
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -37,11 +37,7 @@ export default function IssuesScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
-  useEffect(() => {
-    loadIssues();
-  }, [jobId]);
-
-  const loadIssues = async () => {
+  const loadIssues = useCallback(async () => {
     try {
       setLoading(true);
       const { data, error } = await supabase
@@ -61,7 +57,11 @@ export default function IssuesScreen() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [jobId]);
+
+  useEffect(() => {
+    loadIssues();
+  }, [loadIssues]);
 
   const handleRefresh = async () => {
     setRefreshing(true);
