@@ -10,40 +10,63 @@ import {
   Platform,
   ScrollView,
   ActivityIndicator,
+  Alert,
 } from 'react-native';
 import { useTheme } from '@react-navigation/native';
-import { useAuth } from '@/contexts/AuthContext';
 import { router } from 'expo-router';
+import { supabase } from '@/app/integrations/supabase/client';
 
-export default function LoginScreen() {
+export default function ForgotPasswordScreen() {
   const theme = useTheme();
-  const { signIn } = useAuth();
   const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [emailSent, setEmailSent] = useState(false);
 
-  const handleLogin = async () => {
-    if (!email || !password) {
-      alert('Please fill in all fields');
+  const handleResetPassword = async () => {
+    if (!email) {
+      Alert.alert('Error', 'Please enter your email address');
+      return;
+    }
+
+    // Basic email validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      Alert.alert('Error', 'Please enter a valid email address');
       return;
     }
 
     setLoading(true);
-    const { error } = await signIn(email, password);
-    setLoading(false);
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: 'https://natively.dev/reset-password',
+      });
 
-    if (!error) {
-      // Navigation will be handled automatically by the auth state change
-      console.log('Login successful, redirecting...');
+      if (error) {
+        console.error('Password reset error:', error);
+        Alert.alert('Error', error.message);
+      } else {
+        setEmailSent(true);
+        Alert.alert(
+          'Check Your Email',
+          'We have sent you a password reset link. Please check your email and follow the instructions to reset your password.',
+          [
+            {
+              text: 'OK',
+              onPress: () => router.back(),
+            },
+          ]
+        );
+      }
+    } catch (error: any) {
+      console.error('Password reset exception:', error);
+      Alert.alert('Error', error.message || 'An unexpected error occurred');
+    } finally {
+      setLoading(false);
     }
   };
 
-  const handleGoToRegister = () => {
-    router.push('/(auth)/register');
-  };
-
-  const handleForgotPassword = () => {
-    router.push('/(auth)/forgot-password');
+  const handleGoBack = () => {
+    router.back();
   };
 
   return (
@@ -56,9 +79,11 @@ export default function LoginScreen() {
         keyboardShouldPersistTaps="handled"
       >
         <View style={styles.content}>
-          <Text style={[styles.title, { color: theme.colors.text }]}>Welcome Back</Text>
+          <Text style={[styles.title, { color: theme.colors.text }]}>
+            Forgot Password?
+          </Text>
           <Text style={[styles.subtitle, { color: theme.colors.text, opacity: 0.6 }]}>
-            Sign in to continue
+            Enter your email address and we&apos;ll send you a link to reset your password
           </Text>
 
           <View style={styles.form}>
@@ -79,34 +104,7 @@ export default function LoginScreen() {
                 onChangeText={setEmail}
                 autoCapitalize="none"
                 keyboardType="email-address"
-                editable={!loading}
-              />
-            </View>
-
-            <View style={styles.inputContainer}>
-              <View style={styles.passwordHeader}>
-                <Text style={[styles.label, { color: theme.colors.text }]}>Password</Text>
-                <TouchableOpacity onPress={handleForgotPassword} disabled={loading}>
-                  <Text style={[styles.forgotPasswordText, { color: theme.colors.primary }]}>
-                    Forgot Password?
-                  </Text>
-                </TouchableOpacity>
-              </View>
-              <TextInput
-                style={[
-                  styles.input,
-                  {
-                    backgroundColor: theme.colors.card,
-                    color: theme.colors.text,
-                    borderColor: theme.colors.border,
-                  },
-                ]}
-                placeholder="Enter your password"
-                placeholderTextColor={theme.dark ? '#888' : '#999'}
-                value={password}
-                onChangeText={setPassword}
-                secureTextEntry
-                editable={!loading}
+                editable={!loading && !emailSent}
               />
             </View>
 
@@ -114,28 +112,29 @@ export default function LoginScreen() {
               style={[
                 styles.button,
                 { backgroundColor: theme.colors.primary },
-                loading && styles.buttonDisabled,
+                (loading || emailSent) && styles.buttonDisabled,
               ]}
-              onPress={handleLogin}
-              disabled={loading}
+              onPress={handleResetPassword}
+              disabled={loading || emailSent}
             >
               {loading ? (
                 <ActivityIndicator color="#fff" />
               ) : (
-                <Text style={styles.buttonText}>Sign In</Text>
+                <Text style={styles.buttonText}>
+                  {emailSent ? 'Email Sent' : 'Send Reset Link'}
+                </Text>
               )}
             </TouchableOpacity>
 
-            <View style={styles.footer}>
-              <Text style={[styles.footerText, { color: theme.colors.text, opacity: 0.6 }]}>
-                Don&apos;t have an account?{' '}
+            <TouchableOpacity
+              style={styles.backButton}
+              onPress={handleGoBack}
+              disabled={loading}
+            >
+              <Text style={[styles.backButtonText, { color: theme.colors.primary }]}>
+                Back to Login
               </Text>
-              <TouchableOpacity onPress={handleGoToRegister} disabled={loading}>
-                <Text style={[styles.linkText, { color: theme.colors.primary }]}>
-                  Sign Up
-                </Text>
-              </TouchableOpacity>
-            </View>
+            </TouchableOpacity>
           </View>
         </View>
       </ScrollView>
@@ -167,6 +166,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     marginBottom: 32,
     textAlign: 'center',
+    lineHeight: 24,
   },
   form: {
     width: '100%',
@@ -174,19 +174,10 @@ const styles = StyleSheet.create({
   inputContainer: {
     marginBottom: 20,
   },
-  passwordHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
   label: {
     fontSize: 14,
     fontWeight: '600',
-  },
-  forgotPasswordText: {
-    fontSize: 13,
-    fontWeight: '600',
+    marginBottom: 8,
   },
   input: {
     height: 50,
@@ -210,16 +201,11 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
   },
-  footer: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
+  backButton: {
     marginTop: 24,
+    alignItems: 'center',
   },
-  footerText: {
-    fontSize: 14,
-  },
-  linkText: {
+  backButtonText: {
     fontSize: 14,
     fontWeight: '600',
   },

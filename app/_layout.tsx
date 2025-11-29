@@ -18,6 +18,8 @@ import { StatusBar } from "expo-status-bar";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { usePushNotifications } from "@/hooks/usePushNotifications";
+import * as Linking from "expo-linking";
+import { supabase } from "@/app/integrations/supabase/client";
 
 // Prevent the splash screen from auto-hiding before asset loading is complete.
 SplashScreen.preventAutoHideAsync();
@@ -33,6 +35,58 @@ function RootLayoutNav() {
 
   // Initialize push notifications
   usePushNotifications();
+
+  // Handle deep links for password reset
+  useEffect(() => {
+    const handleDeepLink = async (url: string) => {
+      console.log('Deep link received:', url);
+      
+      // Check if this is a password reset link
+      if (url.includes('reset-password') || url.includes('type=recovery')) {
+        console.log('Password reset link detected');
+        
+        // Extract the access token and refresh token from the URL
+        const urlObj = new URL(url);
+        const accessToken = urlObj.searchParams.get('access_token');
+        const refreshToken = urlObj.searchParams.get('refresh_token');
+        const type = urlObj.searchParams.get('type');
+        
+        if (type === 'recovery' && accessToken) {
+          console.log('Setting session from recovery link');
+          
+          // Set the session using the tokens from the URL
+          const { error } = await supabase.auth.setSession({
+            access_token: accessToken,
+            refresh_token: refreshToken || '',
+          });
+          
+          if (error) {
+            console.error('Error setting session:', error);
+            Alert.alert('Error', 'Invalid or expired reset link');
+          } else {
+            // Navigate to reset password screen
+            router.replace('/(auth)/reset-password');
+          }
+        }
+      }
+    };
+
+    // Listen for deep links
+    const subscription = Linking.addEventListener('url', ({ url }) => {
+      handleDeepLink(url);
+    });
+
+    // Check if app was opened with a deep link
+    Linking.getInitialURL().then((url) => {
+      if (url) {
+        handleDeepLink(url);
+      }
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, [router]);
 
   useEffect(() => {
     if (loading) return;
@@ -52,8 +106,8 @@ function RootLayoutNav() {
       // Redirect to login if not authenticated
       console.log("Redirecting to login...");
       router.replace("/(auth)/login");
-    } else if (session && inAuthGroup) {
-      // Redirect to home if authenticated
+    } else if (session && inAuthGroup && segments[1] !== 'reset-password') {
+      // Redirect to home if authenticated (but allow reset-password screen)
       console.log("Redirecting to home...");
       router.replace("/(tabs)");
     }
