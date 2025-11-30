@@ -43,6 +43,12 @@ interface User {
   is_invited?: boolean;
 }
 
+interface AuthUser {
+  id: string;
+  email: string;
+  display_name: string | null;
+}
+
 export default function HomeScreen() {
   const theme = useTheme();
   const router = useRouter();
@@ -56,9 +62,16 @@ export default function HomeScreen() {
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showScopeModal, setShowScopeModal] = useState(false);
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
+  const [showPasswordResetModal, setShowPasswordResetModal] = useState(false);
+  const [showPasswordChangeModal, setShowPasswordChangeModal] = useState(false);
   const [allUsers, setAllUsers] = useState<User[]>([]);
+  const [authUsers, setAuthUsers] = useState<AuthUser[]>([]);
   const [selectedUsers, setSelectedUsers] = useState<string[]>([]);
+  const [selectedAuthUser, setSelectedAuthUser] = useState<AuthUser | null>(null);
   const [loadingUsers, setLoadingUsers] = useState(false);
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   
   // Form states
   const [jobName, setJobName] = useState('');
@@ -152,6 +165,51 @@ export default function HomeScreen() {
       setAllUsers(usersWithInviteStatus);
     } catch (error) {
       console.error('Exception loading users:', error);
+    } finally {
+      setLoadingUsers(false);
+    }
+  };
+
+  const loadAuthUsers = async () => {
+    try {
+      setLoadingUsers(true);
+      
+      // Get all user profiles with their auth info
+      const { data: usersData, error: usersError } = await supabase
+        .from('user_profiles')
+        .select('user_id, display_name')
+        .order('display_name', { ascending: true });
+
+      if (usersError) {
+        console.error('Error loading users:', usersError);
+        Alert.alert('Error', 'Failed to load users');
+        return;
+      }
+
+      // Get auth user emails using the admin API
+      const authUsersWithEmails: AuthUser[] = [];
+      
+      for (const userProfile of usersData || []) {
+        try {
+          const { data: authData, error: authError } = await supabase.auth.admin.getUserById(userProfile.user_id);
+          
+          if (!authError && authData?.user) {
+            authUsersWithEmails.push({
+              id: authData.user.id,
+              email: authData.user.email || 'No email',
+              display_name: userProfile.display_name
+            });
+          }
+        } catch (error) {
+          console.error('Error fetching auth user:', error);
+        }
+      }
+
+      console.log('Auth users loaded:', authUsersWithEmails);
+      setAuthUsers(authUsersWithEmails);
+    } catch (error) {
+      console.error('Exception loading auth users:', error);
+      Alert.alert('Error', 'An unexpected error occurred');
     } finally {
       setLoadingUsers(false);
     }
@@ -351,6 +409,64 @@ export default function HomeScreen() {
     }
   };
 
+  const handleOpenSettings = () => {
+    setShowSettingsModal(true);
+  };
+
+  const handleResetPasswords = () => {
+    setShowSettingsModal(false);
+    setShowPasswordResetModal(true);
+    loadAuthUsers();
+  };
+
+  const handleSelectUserForPasswordReset = (authUser: AuthUser) => {
+    setSelectedAuthUser(authUser);
+    setNewPassword('');
+    setConfirmPassword('');
+    setShowPasswordResetModal(false);
+    setShowPasswordChangeModal(true);
+  };
+
+  const handleUpdatePassword = async () => {
+    if (!selectedAuthUser) return;
+
+    if (!newPassword.trim()) {
+      Alert.alert('Error', 'Please enter a new password');
+      return;
+    }
+
+    if (newPassword.length < 6) {
+      Alert.alert('Error', 'Password must be at least 6 characters long');
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      Alert.alert('Error', 'Passwords do not match');
+      return;
+    }
+
+    try {
+      const { error } = await supabase.auth.admin.updateUserById(
+        selectedAuthUser.id,
+        { password: newPassword }
+      );
+
+      if (error) {
+        console.error('Error updating password:', error);
+        Alert.alert('Error', 'Failed to update password: ' + error.message);
+      } else {
+        Alert.alert('Success', `Password updated successfully for ${selectedAuthUser.email}`);
+        setShowPasswordChangeModal(false);
+        setSelectedAuthUser(null);
+        setNewPassword('');
+        setConfirmPassword('');
+      }
+    } catch (error: any) {
+      console.error('Exception updating password:', error);
+      Alert.alert('Error', error.message || 'An unexpected error occurred');
+    }
+  };
+
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
     return date.toLocaleDateString('en-US', {
@@ -377,19 +493,6 @@ export default function HomeScreen() {
           )}
         </View>
         <View style={styles.headerActions}>
-          {profile?.is_admin && (
-            <TouchableOpacity
-              style={[styles.createButton, { backgroundColor: theme.colors.primary }]}
-              onPress={handleCreateJob}
-            >
-              <IconSymbol
-                ios_icon_name="plus"
-                android_material_icon_name="add"
-                size={20}
-                color="#fff"
-              />
-            </TouchableOpacity>
-          )}
           <TouchableOpacity
             style={[styles.signOutButton, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}
             onPress={handleSignOut}
@@ -401,6 +504,32 @@ export default function HomeScreen() {
               color={theme.colors.text}
             />
           </TouchableOpacity>
+          {profile?.is_admin && (
+            <>
+              <TouchableOpacity
+                style={[styles.settingsButton, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}
+                onPress={handleOpenSettings}
+              >
+                <IconSymbol
+                  ios_icon_name="gearshape"
+                  android_material_icon_name="settings"
+                  size={20}
+                  color={theme.colors.text}
+                />
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.createButton, { backgroundColor: theme.colors.primary }]}
+                onPress={handleCreateJob}
+              >
+                <IconSymbol
+                  ios_icon_name="plus"
+                  android_material_icon_name="add"
+                  size={20}
+                  color="#fff"
+                />
+              </TouchableOpacity>
+            </>
+          )}
         </View>
       </View>
 
@@ -551,6 +680,176 @@ export default function HomeScreen() {
             </TouchableOpacity>
           </View>
         </TouchableOpacity>
+      </Modal>
+
+      {/* Settings Modal */}
+      <Modal
+        visible={showSettingsModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowSettingsModal(false)}
+      >
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => setShowSettingsModal(false)}
+        >
+          <View style={[styles.menuContainer, { backgroundColor: theme.colors.card }]}>
+            <Text style={[styles.menuTitle, { color: theme.colors.text }]}>
+              Admin Settings
+            </Text>
+            <TouchableOpacity
+              style={styles.menuItem}
+              onPress={handleResetPasswords}
+            >
+              <IconSymbol
+                ios_icon_name="key"
+                android_material_icon_name="vpn_key"
+                size={20}
+                color={theme.colors.text}
+              />
+              <Text style={[styles.menuItemText, { color: theme.colors.text }]}>Reset Passwords</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.menuItem, styles.menuItemCancel]}
+              onPress={() => setShowSettingsModal(false)}
+            >
+              <Text style={[styles.menuItemText, { color: theme.colors.text }]}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </Modal>
+
+      {/* Password Reset User List Modal */}
+      <Modal
+        visible={showPasswordResetModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowPasswordResetModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.inviteContainer, { backgroundColor: theme.colors.card }]}>
+            <Text style={[styles.formTitle, { color: theme.colors.text }]}>Reset User Password</Text>
+            <Text style={[styles.inviteSubtitle, { color: theme.colors.text }]}>
+              Select a user to reset their password
+            </Text>
+            
+            {loadingUsers ? (
+              <View style={styles.loadingUsersContainer}>
+                <ActivityIndicator size="small" color={theme.colors.primary} />
+                <Text style={[styles.loadingUsersText, { color: theme.colors.text }]}>Loading users...</Text>
+              </View>
+            ) : authUsers.length === 0 ? (
+              <View style={styles.emptyUsersContainer}>
+                <Text style={[styles.emptyUsersText, { color: theme.colors.text }]}>
+                  No users available
+                </Text>
+              </View>
+            ) : (
+              <ScrollView style={styles.userList} showsVerticalScrollIndicator={false}>
+                {authUsers.map((authUser, index) => (
+                  <TouchableOpacity
+                    key={index}
+                    style={[
+                      styles.userItem,
+                      { borderColor: theme.colors.border }
+                    ]}
+                    onPress={() => handleSelectUserForPasswordReset(authUser)}
+                  >
+                    <View style={styles.userItemContent}>
+                      <IconSymbol
+                        ios_icon_name="person.circle"
+                        android_material_icon_name="account_circle"
+                        size={24}
+                        color={theme.colors.text}
+                      />
+                      <View style={styles.userInfo}>
+                        <Text style={[styles.userName, { color: theme.colors.text }]}>
+                          {authUser.display_name || 'Unknown User'}
+                        </Text>
+                        <Text style={[styles.userEmail, { color: theme.colors.text }]}>
+                          {authUser.email}
+                        </Text>
+                      </View>
+                    </View>
+                    <IconSymbol
+                      ios_icon_name="chevron.right"
+                      android_material_icon_name="chevron_right"
+                      size={20}
+                      color={theme.colors.text}
+                      style={{ opacity: 0.5 }}
+                    />
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            )}
+            
+            <View style={styles.formActions}>
+              <TouchableOpacity
+                style={[styles.formButton, styles.formButtonSecondary, { borderColor: theme.colors.border }]}
+                onPress={() => {
+                  setShowPasswordResetModal(false);
+                }}
+              >
+                <Text style={[styles.formButtonText, { color: theme.colors.text }]}>Cancel</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Password Change Modal */}
+      <Modal
+        visible={showPasswordChangeModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowPasswordChangeModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.formContainer, { backgroundColor: theme.colors.card }]}>
+            <Text style={[styles.formTitle, { color: theme.colors.text }]}>Change Password</Text>
+            <Text style={[styles.inviteSubtitle, { color: theme.colors.text, marginBottom: 16 }]}>
+              {selectedAuthUser?.display_name || selectedAuthUser?.email}
+            </Text>
+            <TextInput
+              style={[styles.input, { backgroundColor: theme.colors.background, color: theme.colors.text, borderColor: theme.colors.border }]}
+              placeholder="New Password"
+              placeholderTextColor={theme.colors.text + '80'}
+              value={newPassword}
+              onChangeText={setNewPassword}
+              secureTextEntry
+              autoCapitalize="none"
+            />
+            <TextInput
+              style={[styles.input, { backgroundColor: theme.colors.background, color: theme.colors.text, borderColor: theme.colors.border }]}
+              placeholder="Confirm Password"
+              placeholderTextColor={theme.colors.text + '80'}
+              value={confirmPassword}
+              onChangeText={setConfirmPassword}
+              secureTextEntry
+              autoCapitalize="none"
+            />
+            <View style={styles.formActions}>
+              <TouchableOpacity
+                style={[styles.formButton, styles.formButtonSecondary, { borderColor: theme.colors.border }]}
+                onPress={() => {
+                  setShowPasswordChangeModal(false);
+                  setSelectedAuthUser(null);
+                  setNewPassword('');
+                  setConfirmPassword('');
+                }}
+              >
+                <Text style={[styles.formButtonText, { color: theme.colors.text }]}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.formButton, styles.formButtonPrimary, { backgroundColor: theme.colors.primary }]}
+                onPress={handleUpdatePassword}
+              >
+                <Text style={[styles.formButtonText, { color: '#fff' }]}>Submit</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
       </Modal>
 
       {/* Edit Job Modal */}
@@ -817,6 +1116,14 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
+  settingsButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+  },
   signOutButton: {
     width: 40,
     height: 40,
@@ -1041,6 +1348,11 @@ const styles = StyleSheet.create({
   userName: {
     fontSize: 16,
     fontWeight: '500',
+  },
+  userEmail: {
+    fontSize: 14,
+    opacity: 0.6,
+    marginTop: 2,
   },
   invitedLabel: {
     fontSize: 12,

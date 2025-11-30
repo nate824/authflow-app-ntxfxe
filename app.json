@@ -1,4 +1,3 @@
-
 {
   "expo": {
     "name": "AuthFlow",
@@ -73,5 +72,6 @@
     "extra": {
       "router": {}
     }
-  }
+  },
+  "scheme": "AuthFlow"
 }
