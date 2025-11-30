@@ -41,37 +41,54 @@ function RootLayoutNav() {
     const handleDeepLink = async (url: string) => {
       console.log('Deep link received:', url);
       
-      // Check if this is a password reset link
-      if (url.includes('reset-password') || url.includes('type=recovery')) {
-        console.log('Password reset link detected');
-        
-        // Extract the access token and refresh token from the URL
+      // Parse the URL to check for password reset tokens
+      try {
         const urlObj = new URL(url);
-        const accessToken = urlObj.searchParams.get('access_token');
-        const refreshToken = urlObj.searchParams.get('refresh_token');
-        const type = urlObj.searchParams.get('type');
+        const accessToken = urlObj.searchParams.get('access_token') || 
+                           urlObj.hash.match(/access_token=([^&]+)/)?.[1];
+        const refreshToken = urlObj.searchParams.get('refresh_token') || 
+                            urlObj.hash.match(/refresh_token=([^&]+)/)?.[1];
+        const type = urlObj.searchParams.get('type') || 
+                    urlObj.hash.match(/type=([^&]+)/)?.[1];
         
+        console.log('URL params:', { type, hasAccessToken: !!accessToken, hasRefreshToken: !!refreshToken });
+        
+        // Check if this is a password reset/recovery link
         if (type === 'recovery' && accessToken) {
-          console.log('Setting session from recovery link');
+          console.log('Password recovery link detected, setting session...');
           
           // Set the session using the tokens from the URL
-          const { error } = await supabase.auth.setSession({
+          const { data, error } = await supabase.auth.setSession({
             access_token: accessToken,
             refresh_token: refreshToken || '',
           });
           
           if (error) {
             console.error('Error setting session:', error);
-            Alert.alert('Error', 'Invalid or expired reset link');
+            Alert.alert(
+              'Error',
+              'Invalid or expired reset link. Please request a new password reset link.',
+              [
+                {
+                  text: 'OK',
+                  onPress: () => router.replace('/(auth)/forgot-password'),
+                },
+              ]
+            );
           } else {
-            // Navigate to reset password screen
-            router.replace('/(auth)/reset-password');
+            console.log('Session set successfully, navigating to reset password screen');
+            // Small delay to ensure session is fully set
+            setTimeout(() => {
+              router.replace('/(auth)/reset-password');
+            }, 100);
           }
         }
+      } catch (error) {
+        console.error('Error parsing deep link:', error);
       }
     };
 
-    // Listen for deep links
+    // Listen for deep links while app is running
     const subscription = Linking.addEventListener('url', ({ url }) => {
       handleDeepLink(url);
     });

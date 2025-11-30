@@ -37,8 +37,10 @@ export default function ForgotPasswordScreen() {
 
     setLoading(true);
     try {
+      // Use the Natively hosted password reset page
+      // This is a web page that will handle the token and redirect to the app
       const { error } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: 'https://natively.dev/reset-password',
+        redirectTo: 'https://natively.dev/password-reset',
       });
 
       if (error) {
@@ -48,7 +50,7 @@ export default function ForgotPasswordScreen() {
         setEmailSent(true);
         Alert.alert(
           'Check Your Email',
-          'We have sent you a password reset link. Please check your email and follow the instructions to reset your password.',
+          'We have sent you a password reset link. Please check your email and click the link to reset your password.\n\nThe link will open in your browser and then redirect to the app where you can set your new password.',
           [
             {
               text: 'OK',
