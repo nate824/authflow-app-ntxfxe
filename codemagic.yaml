@@ -6,14 +6,14 @@ workflows:
     integrations:
       app_store_connect: CodeMagic
     environment:
-      xcode: latest
+      xcode: 15.2
       node: 20
       cocoapods: default
       ios_signing:
         distribution_type: app_store
-        bundle_identifier: com.n8.Authflow
+        bundle_identifier: com.n8.infoflow
       vars:
-        BUNDLE_ID: "com.n8.Authflow"
+        BUNDLE_ID: "com.n8.infoflow"
     scripts:
       - name: Install dependencies
         script: |
@@ -32,18 +32,18 @@ workflows:
       - name: Build iOS
         script: |
           cd ios
-          xcodebuild -workspace AuthFlow.xcworkspace \
-            -scheme AuthFlow \
+          xcodebuild -workspace infoFlow.xcworkspace \
+            -scheme infoFlow \
             -configuration Release \
             -sdk iphoneos \
             -destination 'generic/platform=iOS' \
-            -archivePath build/AuthFlow.xcarchive \
+            -archivePath build/infoFlow.xcarchive \
             archive 2>&1 | tee build.log
       - name: Export IPA
         script: |
           cd ios
           xcodebuild -exportArchive \
-            -archivePath build/AuthFlow.xcarchive \
+            -archivePath build/infoFlow.xcarchive \
             -exportPath build \
             -exportOptionsPlist ~/export_options.plist
     artifacts:
