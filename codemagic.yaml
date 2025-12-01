@@ -12,6 +12,10 @@ workflows:
       ios_signing:
         distribution_type: app_store
         bundle_identifier: com.n8.infoflow
+        provisioning_profiles:
+          - InfoProvision
+        certificates:
+          - infoDistroCert
       vars:
         BUNDLE_ID: "com.n8.infoflow"
     scripts:
