@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "AuthFlow",
-    "slug": "AuthFlow",
+    "name": "infoFlow",
+    "slug": "infoflow",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/natively-dark.png",
@@ -14,13 +14,10 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.anonymous.Natively",
+      "bundleIdentifier": "com.n8.infoflow",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
-      },
-      "associatedDomains": [
-        "applinks:natively.dev"
-      ]
+      }
     },
     "android": {
       "softwareKeyboardLayoutMode": "resize",
@@ -29,24 +26,7 @@
         "backgroundColor": "#000000"
       },
       "edgeToEdgeEnabled": true,
-      "package": "com.anonymous.Natively",
-      "intentFilters": [
-        {
-          "action": "VIEW",
-          "autoVerify": true,
-          "data": [
-            {
-              "scheme": "https",
-              "host": "natively.dev",
-              "pathPrefix": "/password-reset"
-            }
-          ],
-          "category": [
-            "BROWSABLE",
-            "DEFAULT"
-          ]
-        }
-      ]
+      "package": "com.n8.infoflow"
     },
     "web": {
       "favicon": "./assets/images/final_quest_240x240.png",
@@ -65,7 +45,7 @@
         }
       ]
     ],
-    "scheme": "natively",
+    "scheme": "infoflow",
     "experiments": {
       "typedRoutes": true
     },

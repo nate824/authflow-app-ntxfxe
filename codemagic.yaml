@@ -1,0 +1,54 @@
+workflows:
+  ios-production:
+    name: iOS Production Build
+    max_build_duration: 60
+    instance_type: mac_mini_m1
+    integrations:
+      app_store_connect: CodeMagic
+    environment:
+      xcode: latest
+      node: 20
+      cocoapods: default
+      ios_signing:
+        distribution_type: app_store
+        bundle_identifier: com.n8.infoflow
+      vars:
+        BUNDLE_ID: "com.n8.infoflow"
+    scripts:
+      - name: Install dependencies
+        script: |
+          npm install
+      - name: Prebuild iOS
+        script: |
+          npx expo prebuild --platform ios --clean
+      - name: Install CocoaPods
+        script: |
+          cd ios && pod install
+      - name: Set up code signing
+        script: |
+          keychain initialize
+          keychain add-certificates
+          xcode-project use-profiles --project ios/infoFlow.xcodeproj
+      - name: Build iOS
+        script: |
+          cd ios
+          xcodebuild -workspace infoFlow.xcworkspace \
+            -scheme infoFlow \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -archivePath build/infoFlow.xcarchive \
+            archive 2>&1 | tee build.log
+      - name: Export IPA
+        script: |
+          cd ios
+          xcodebuild -exportArchive \
+            -archivePath build/infoFlow.xcarchive \
+            -exportPath build \
+            -exportOptionsPlist ~/export_options.plist
+    artifacts:
+      - ios/build/*.ipa
+      - ios/build.log
+    publishing:
+      app_store_connect:
+        auth: integration
