@@ -43,6 +43,33 @@ interface ChatTabProps {
   jobId: string;
 }
 
+// Helper functions defined outside component
+function getInitials(displayName: string | null | undefined, userId: string): string {
+  if (displayName) {
+    return displayName
+      .split(' ')
+      .map((n) => n[0])
+      .join('')
+      .toUpperCase()
+      .substring(0, 2);
+  }
+  return userId.substring(0, 2).toUpperCase();
+}
+
+function getAvatarColor(userId: string): string {
+  const colors = [
+    '#FF6B6B', '#4ECDC4', '#45B7D1', '#FFA07A', '#98D8C8',
+    '#F7DC6F', '#BB8FCE', '#85C1E2', '#F8B739', '#52B788',
+  ];
+  const index = userId.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0) % colors.length;
+  return colors[index];
+}
+
+function formatMessageTime(timestamp: string): string {
+  const date = new Date(timestamp);
+  return date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+}
+
 // Separate component for message text to isolate Android rendering
 function MessageTextContent({ text }: { text: string }) {
   const displayText = String(text || '');
@@ -70,10 +97,21 @@ function MessageBubble({
   isCurrentUser: boolean;
   theme: any;
 }) {
-  const displayName = message.userProfile?.display_name || 'User';
+  // Get display name with better fallback handling
+  const displayName = React.useMemo(() => {
+    if (message.userProfile?.display_name) {
+      return message.userProfile.display_name;
+    }
+    // Fallback to user_id substring if no display name
+    return message.user_id.substring(0, 8);
+  }, [message.userProfile?.display_name, message.user_id]);
+
   const initials = getInitials(message.userProfile?.display_name, message.user_id);
   const avatarColor = getAvatarColor(message.user_id);
   const messageText = message.message_text || '[Empty message]';
+
+  // Use avatar color for chat bubble
+  const bubbleColor = isCurrentUser ? theme.colors.primary : avatarColor;
 
   return (
     <View
@@ -99,9 +137,7 @@ function MessageBubble({
           <View
             style={[
               styles.bubbleContainer,
-              isCurrentUser
-                ? { backgroundColor: theme.colors.primary }
-                : { backgroundColor: '#10B981', borderWidth: 0, borderColor: 'transparent' },
+              { backgroundColor: bubbleColor },
               message.isOptimistic && { opacity: 0.7 },
             ]}
           >
@@ -128,33 +164,6 @@ function MessageBubble({
       </View>
     </View>
   );
-}
-
-// Helper functions defined outside component
-function getInitials(displayName: string | null | undefined, userId: string): string {
-  if (displayName) {
-    return displayName
-      .split(' ')
-      .map((n) => n[0])
-      .join('')
-      .toUpperCase()
-      .substring(0, 2);
-  }
-  return userId.substring(0, 2).toUpperCase();
-}
-
-function getAvatarColor(userId: string): string {
-  const colors = [
-    '#FF6B6B', '#4ECDC4', '#45B7D1', '#FFA07A', '#98D8C8',
-    '#F7DC6F', '#BB8FCE', '#85C1E2', '#F8B739', '#52B788',
-  ];
-  const index = userId.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0) % colors.length;
-  return colors[index];
-}
-
-function formatMessageTime(timestamp: string): string {
-  const date = new Date(timestamp);
-  return date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
 }
 
 export default function ChatTab({ jobId }: ChatTabProps) {
@@ -196,25 +205,36 @@ export default function ChatTab({ jobId }: ChatTabProps) {
   });
 
   const getCurrentUser = useCallback(async () => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (user) {
-      setCurrentUserId(user.id);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        console.log('Current user ID:', user.id);
+        setCurrentUserId(user.id);
 
-      const { data: profileData } = await supabase
-        .from('user_profiles')
-        .select('user_id, display_name, avatar_url')
-        .eq('user_id', user.id)
-        .single();
+        const { data: profileData, error: profileError } = await supabase
+          .from('user_profiles')
+          .select('user_id, display_name, avatar_url')
+          .eq('user_id', user.id)
+          .single();
 
-      if (profileData) {
-        setCurrentUserProfile(profileData);
-      } else {
-        setCurrentUserProfile({
-          user_id: user.id,
-          display_name: null,
-          avatar_url: null,
-        });
+        if (profileError) {
+          console.log('Profile fetch error:', profileError);
+        }
+
+        if (profileData) {
+          console.log('Current user profile:', profileData);
+          setCurrentUserProfile(profileData);
+        } else {
+          console.log('No profile found, using default');
+          setCurrentUserProfile({
+            user_id: user.id,
+            display_name: null,
+            avatar_url: null,
+          });
+        }
       }
+    } catch (error) {
+      console.error('Error getting current user:', error);
     }
   }, []);
 
@@ -251,6 +271,8 @@ export default function ChatTab({ jobId }: ChatTabProps) {
     try {
       if (messages.length === 0) setLoading(true);
 
+      console.log('Fetching messages for job:', jobId);
+
       const { data: messagesData, error: messagesError } = await supabase
         .from('chat_messages')
         .select('id, message_text, user_id, created_at, message_type, image_url')
@@ -271,15 +293,30 @@ export default function ChatTab({ jobId }: ChatTabProps) {
 
       console.log('Fetched messages count:', messagesData.length);
 
+      // Get unique user IDs
       const userIds = [...new Set(messagesData.map((msg) => msg.user_id))];
+      console.log('Fetching profiles for user IDs:', userIds);
 
-      const { data: profilesData } = await supabase
+      // Fetch all user profiles
+      const { data: profilesData, error: profilesError } = await supabase
         .from('user_profiles')
         .select('user_id, display_name, avatar_url')
         .in('user_id', userIds);
 
+      if (profilesError) {
+        console.error('Error fetching profiles:', profilesError);
+      } else {
+        console.log('Fetched profiles:', profilesData);
+      }
+
+      // Map messages with their user profiles
       const messagesWithProfiles = messagesData.map((msg) => {
         const userProfile = profilesData?.find((profile) => profile.user_id === msg.user_id);
+        
+        if (!userProfile) {
+          console.log('No profile found for user:', msg.user_id);
+        }
+
         return {
           ...msg,
           userProfile: userProfile || {
@@ -290,6 +327,12 @@ export default function ChatTab({ jobId }: ChatTabProps) {
           isOptimistic: false,
         };
       });
+
+      console.log('Messages with profiles:', messagesWithProfiles.map(m => ({
+        id: m.id,
+        user_id: m.user_id,
+        display_name: m.userProfile?.display_name
+      })));
 
       setMessages(messagesWithProfiles);
 
@@ -315,8 +358,27 @@ export default function ChatTab({ jobId }: ChatTabProps) {
           table: 'chat_messages',
           filter: `job_id=eq.${jobId}`,
         },
-        (payload) => {
+        async (payload) => {
           console.log('New message received via Realtime:', payload);
+
+          // Fetch the user profile for the new message
+          const { data: profileData } = await supabase
+            .from('user_profiles')
+            .select('user_id, display_name, avatar_url')
+            .eq('user_id', payload.new.user_id)
+            .single();
+
+          console.log('Profile for new message:', profileData);
+
+          const newMessage = {
+            ...payload.new,
+            userProfile: profileData || {
+              user_id: payload.new.user_id,
+              display_name: null,
+              avatar_url: null,
+            },
+            isOptimistic: false,
+          } as Message;
 
           setMessages((prev) => {
             const hasOptimistic = prev.some(
@@ -324,22 +386,27 @@ export default function ChatTab({ jobId }: ChatTabProps) {
             );
 
             if (hasOptimistic) {
+              // Replace optimistic message with real one
               return prev.map((msg) =>
                 msg.isOptimistic && msg.message_text === payload.new.message_text
-                  ? { ...(payload.new as Message), isOptimistic: false }
+                  ? newMessage
                   : msg
               );
             } else {
-              fetchMessages();
-              return prev;
+              // Add new message
+              return [...prev, newMessage];
             }
           });
 
           // Mark as read when new message arrives while viewing chat
-          // Use a small delay to ensure the message is rendered first
           setTimeout(() => {
             markMessagesAsRead();
           }, 500);
+
+          // Scroll to bottom
+          setTimeout(() => {
+            scrollViewRef.current?.scrollToEnd({ animated: true });
+          }, 100);
         }
       )
       .subscribe((status) => {
@@ -347,7 +414,7 @@ export default function ChatTab({ jobId }: ChatTabProps) {
       });
 
     channelRef.current = channel;
-  }, [jobId, markMessagesAsRead, fetchMessages]);
+  }, [jobId, markMessagesAsRead]);
 
   useEffect(() => {
     getCurrentUser();
@@ -407,6 +474,7 @@ export default function ChatTab({ jobId }: ChatTabProps) {
         setMessages((prev) => prev.filter((msg) => msg.id !== optimisticMessage.id));
         alert('Failed to send message. Please try again.');
       } else if (data && data.length > 0) {
+        console.log('Message sent successfully:', data[0]);
         setMessages((prev) =>
           prev.map((msg) =>
             msg.id === optimisticMessage.id

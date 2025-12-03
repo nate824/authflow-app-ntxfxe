@@ -240,50 +240,38 @@ export default function HomeScreen() {
     }
   };
 
-  const loadAuthUsers = async () => {
-    try {
-      setLoadingUsers(true);
-      
-      // Get all user profiles with their auth info
-      const { data: usersData, error: usersError } = await supabase
-        .from('user_profiles')
-        .select('user_id, display_name')
-        .order('display_name', { ascending: true });
+const loadAuthUsers = async () => {
+  try {
+    setLoadingUsers(true);
+    
+    // Query user_profiles directly (same approach as loadAllUsers)
+    const { data: usersData, error: usersError } = await supabase
+      .from('user_profiles')
+      .select('user_id, display_name, email')
+      .order('display_name', { ascending: true });
 
-      if (usersError) {
-        console.error('Error loading users:', usersError);
-        Alert.alert('Error', 'Failed to load users');
-        return;
-      }
-
-      // Get auth user emails using the admin API
-      const authUsersWithEmails: AuthUser[] = [];
-      
-      for (const userProfile of usersData || []) {
-        try {
-          const { data: authData, error: authError } = await supabase.auth.admin.getUserById(userProfile.user_id);
-          
-          if (!authError && authData?.user) {
-            authUsersWithEmails.push({
-              id: authData.user.id,
-              email: authData.user.email || 'No email',
-              display_name: userProfile.display_name
-            });
-          }
-        } catch (error) {
-          console.error('Error fetching auth user:', error);
-        }
-      }
-
-      console.log('Auth users loaded:', authUsersWithEmails);
-      setAuthUsers(authUsersWithEmails);
-    } catch (error) {
-      console.error('Exception loading auth users:', error);
-      Alert.alert('Error', 'An unexpected error occurred');
-    } finally {
-      setLoadingUsers(false);
+    if (usersError) {
+      console.error('Error loading users:', usersError);
+      Alert.alert('Error', 'Failed to load users');
+      return;
     }
-  };
+
+    // Map to AuthUser format
+    const authUsersWithEmails: AuthUser[] = (usersData || []).map(profile => ({
+      id: profile.user_id,
+      email: profile.email || 'No email',
+      display_name: profile.display_name
+    }));
+
+    console.log('Auth users loaded:', authUsersWithEmails);
+    setAuthUsers(authUsersWithEmails);
+  } catch (error) {
+    console.error('Exception loading auth users:', error);
+    Alert.alert('Error', 'An unexpected error occurred');
+  } finally {
+    setLoadingUsers(false);
+  }
+};
 
   const handleJobPress = (job: Job) => {
     console.log('Navigating to job:', job.id);
